@@ -15,6 +15,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/lobinuxsoft/bazzite-devkit/internal/config"
 	"github.com/lobinuxsoft/bazzite-devkit/internal/device"
 )
 
@@ -42,37 +43,145 @@ var devices []*Device
 
 func init() {
 	devices = make([]*Device, 0)
+	loadSavedDevices()
 }
+
+// loadSavedDevices loads devices from the config file
+func loadSavedDevices() {
+	savedDevices, err := config.GetDevices()
+	if err != nil {
+		return
+	}
+
+	for _, d := range savedDevices {
+		devices = append(devices, &Device{
+			Name:     d.Name,
+			Host:     d.Host,
+			Port:     d.Port,
+			User:     d.User,
+			KeyFile:  d.KeyFile,
+			Password: d.Password,
+		})
+	}
+}
+
+// saveDevice saves a device to the config file
+func saveDevice(dev *Device) {
+	config.AddDevice(config.DeviceConfig{
+		Name:     dev.Name,
+		Host:     dev.Host,
+		Port:     dev.Port,
+		User:     dev.User,
+		KeyFile:  dev.KeyFile,
+		Password: dev.Password,
+	})
+}
+
+// updateDeviceConfig updates a device in the config file
+func updateDeviceConfig(oldHost string, dev *Device) {
+	config.UpdateDevice(oldHost, config.DeviceConfig{
+		Name:     dev.Name,
+		Host:     dev.Host,
+		Port:     dev.Port,
+		User:     dev.User,
+		KeyFile:  dev.KeyFile,
+		Password: dev.Password,
+	})
+}
+
+
+// deviceRowData stores widget references for a device list row
+type deviceRowData struct {
+	nameLabel   *widget.Label
+	statusLabel *widget.Label
+	connectBtn  *widget.Button
+	editBtn     *widget.Button
+	deleteBtn   *widget.Button
+}
+
+// Map to store row data by container pointer
+var deviceRowCache = make(map[fyne.CanvasObject]*deviceRowData)
 
 // createDevicesTab creates the devices management tab
 func createDevicesTab() fyne.CanvasObject {
-	// Device list
+	// Device list with inline buttons
 	deviceList = widget.NewList(
 		func() int { return len(devices) },
 		func() fyne.CanvasObject {
-			status := widget.NewLabel("Status")
-			status.Alignment = fyne.TextAlignTrailing
-			return container.NewBorder(
-				nil, nil,
+			nameLabel := widget.NewLabel("Device Name")
+			statusLabel := widget.NewLabel("Status")
+			statusLabel.TextStyle = fyne.TextStyle{Italic: true}
+			connectBtn := widget.NewButtonWithIcon("", theme.LoginIcon(), nil)
+			editBtn := widget.NewButtonWithIcon("", theme.DocumentCreateIcon(), nil)
+			deleteBtn := widget.NewButtonWithIcon("", theme.DeleteIcon(), nil)
+
+			buttons := container.NewHBox(connectBtn, editBtn, deleteBtn)
+			infoRow := container.NewHBox(
 				widget.NewIcon(theme.ComputerIcon()),
-				status,
-				widget.NewLabel("Device Name"),
+				nameLabel,
+				widget.NewLabel("   "),
+				statusLabel,
 			)
+
+			c := container.NewBorder(nil, nil, nil, buttons, infoRow)
+
+			// Store widget references
+			deviceRowCache[c] = &deviceRowData{
+				nameLabel:   nameLabel,
+				statusLabel: statusLabel,
+				connectBtn:  connectBtn,
+				editBtn:     editBtn,
+				deleteBtn:   deleteBtn,
+			}
+
+			return c
 		},
 		func(id widget.ListItemID, obj fyne.CanvasObject) {
 			if id >= len(devices) {
 				return
 			}
 			dev := devices[id]
-			box := obj.(*fyne.Container)
-			nameLabel := box.Objects[0].(*widget.Label)
-			statusLabel := box.Objects[2].(*widget.Label)
 
-			nameLabel.SetText(fmt.Sprintf("%s  (%s@%s)", dev.Name, dev.User, dev.Host))
+			// Get cached widget references
+			row, ok := deviceRowCache[obj]
+			if !ok {
+				return
+			}
+
+			// Update labels
+			row.nameLabel.SetText(fmt.Sprintf("%s (%s@%s)", dev.Name, dev.User, dev.Host))
 			if dev.Connected {
-				statusLabel.SetText("Connected")
+				row.statusLabel.SetText("● Connected")
+				row.connectBtn.SetIcon(theme.LogoutIcon())
+				row.connectBtn.Importance = widget.DangerImportance
 			} else {
-				statusLabel.SetText("Disconnected")
+				row.statusLabel.SetText("○ Disconnected")
+				row.connectBtn.SetIcon(theme.LoginIcon())
+				row.connectBtn.Importance = widget.HighImportance
+			}
+			row.connectBtn.Refresh()
+
+			// Set button actions
+			row.connectBtn.OnTapped = func() {
+				if dev.Connected {
+					disconnectDevice(dev)
+				} else {
+					go connectToDevice(dev)
+				}
+			}
+
+			row.editBtn.OnTapped = func() {
+				showEditDeviceWindow(dev)
+			}
+
+			row.deleteBtn.OnTapped = func() {
+				dialog.ShowConfirm("Delete Device",
+					fmt.Sprintf("Are you sure you want to delete '%s'?", dev.Name),
+					func(ok bool) {
+						if ok {
+							removeDevice(dev)
+						}
+					}, State.Window)
 			}
 		},
 	)
@@ -83,34 +192,16 @@ func createDevicesTab() fyne.CanvasObject {
 		}
 	}
 
-	// Buttons
+	// Top buttons - only Scan and Add
 	scanBtn := widget.NewButtonWithIcon("Scan Network", theme.SearchIcon(), func() {
 		showScanNetworkWindow()
 	})
 
-	addBtn := widget.NewButtonWithIcon("Add Manual", theme.ContentAddIcon(), func() {
+	addBtn := widget.NewButtonWithIcon("Add Device", theme.ContentAddIcon(), func() {
 		showAddDeviceWindow()
 	})
 
-	connectBtn := widget.NewButtonWithIcon("Connect", theme.LoginIcon(), func() {
-		if State.SelectedDevice != nil {
-			go connectToDevice(State.SelectedDevice)
-		}
-	})
-
-	disconnectBtn := widget.NewButtonWithIcon("Disconnect", theme.LogoutIcon(), func() {
-		if State.SelectedDevice != nil && State.SelectedDevice.Connected {
-			disconnectDevice(State.SelectedDevice)
-		}
-	})
-
-	removeBtn := widget.NewButtonWithIcon("Remove", theme.DeleteIcon(), func() {
-		if State.SelectedDevice != nil {
-			removeDevice(State.SelectedDevice)
-		}
-	})
-
-	buttons := container.NewHBox(scanBtn, addBtn, connectBtn, disconnectBtn, removeBtn)
+	buttons := container.NewHBox(scanBtn, addBtn)
 
 	return container.NewBorder(
 		buttons,
@@ -207,42 +298,62 @@ func showAddDeviceWindow() {
 
 // showAddDeviceWindowWithIP shows the add device window with pre-filled IP
 func showAddDeviceWindowWithIP(ip, hostname string) {
-	addWindow := fyne.CurrentApp().NewWindow("Add Device")
-	addWindow.Resize(fyne.NewSize(500, 450))
+	showDeviceForm(nil, ip, hostname)
+}
+
+// showEditDeviceWindow shows the edit device window
+func showEditDeviceWindow(dev *Device) {
+	showDeviceForm(dev, dev.Host, dev.Name)
+}
+
+// showDeviceForm shows a form to add or edit a device
+func showDeviceForm(existingDev *Device, ip, hostname string) {
+	isEdit := existingDev != nil
+	title := "Add Device"
+	if isEdit {
+		title = "Edit Device"
+	}
+
+	formWindow := fyne.CurrentApp().NewWindow(title)
+	formWindow.Resize(fyne.NewSize(500, 450))
 
 	nameEntry := widget.NewEntry()
-	if hostname != "" {
-		nameEntry.SetText(hostname)
-	} else {
-		nameEntry.SetPlaceHolder("My Bazzite Device")
-	}
-
 	hostEntry := widget.NewEntry()
-	if ip != "" {
-		hostEntry.SetText(ip)
-	} else {
-		hostEntry.SetPlaceHolder("192.168.1.100")
-	}
-
 	portEntry := widget.NewEntry()
-	portEntry.SetText("22")
-
 	userEntry := widget.NewEntry()
-	userEntry.SetText("deck")
-
-	// Authentication method selection
 	passwordEntry := widget.NewPasswordEntry()
-	passwordEntry.SetPlaceHolder("Enter your password")
-
 	keyFileEntry := widget.NewEntry()
-	keyFileEntry.SetPlaceHolder("~/.ssh/id_ed25519")
+
+	if isEdit {
+		nameEntry.SetText(existingDev.Name)
+		hostEntry.SetText(existingDev.Host)
+		portEntry.SetText(fmt.Sprintf("%d", existingDev.Port))
+		userEntry.SetText(existingDev.User)
+		passwordEntry.SetText(existingDev.Password)
+		keyFileEntry.SetText(existingDev.KeyFile)
+	} else {
+		if hostname != "" {
+			nameEntry.SetText(hostname)
+		} else {
+			nameEntry.SetPlaceHolder("My Bazzite Device")
+		}
+		if ip != "" {
+			hostEntry.SetText(ip)
+		} else {
+			hostEntry.SetPlaceHolder("192.168.1.100")
+		}
+		portEntry.SetText("22")
+		userEntry.SetText("deck")
+		keyFileEntry.SetPlaceHolder("~/.ssh/id_ed25519")
+		passwordEntry.SetPlaceHolder("SSH Password")
+	}
 
 	// Detect existing SSH keys
 	existingKeys := findExistingSSHKeys()
 	keySelect := widget.NewSelect(existingKeys, func(selected string) {
 		keyFileEntry.SetText(selected)
 	})
-	if len(existingKeys) > 0 {
+	if len(existingKeys) > 0 && keyFileEntry.Text == "" {
 		keySelect.SetSelected(existingKeys[0])
 		keyFileEntry.SetText(existingKeys[0])
 	}
@@ -271,7 +382,13 @@ func showAddDeviceWindowWithIP(ip, hostname string) {
 			keyContainer.Show()
 		}
 	})
-	authType.SetSelected("Password")
+
+	// Set initial auth type based on existing device
+	if isEdit && existingDev.KeyFile != "" {
+		authType.SetSelected("SSH Key")
+	} else {
+		authType.SetSelected("Password")
+	}
 
 	// Basic info form
 	basicForm := widget.NewForm(
@@ -281,7 +398,7 @@ func showAddDeviceWindowWithIP(ip, hostname string) {
 		widget.NewFormItem("User", userEntry),
 	)
 
-	saveBtn := widget.NewButtonWithIcon("Add Device", theme.ConfirmIcon(), func() {
+	saveBtn := widget.NewButtonWithIcon("Save", theme.ConfirmIcon(), func() {
 		port := 22
 		fmt.Sscanf(portEntry.Text, "%d", &port)
 
@@ -297,22 +414,35 @@ func showAddDeviceWindowWithIP(ip, hostname string) {
 			keyFile = keyFileEntry.Text
 		}
 
-		dev := &Device{
-			Name:     name,
-			Host:     hostEntry.Text,
-			Port:     port,
-			User:     userEntry.Text,
-			KeyFile:  keyFile,
-			Password: password,
+		if isEdit {
+			oldHost := existingDev.Host
+			existingDev.Name = name
+			existingDev.Host = hostEntry.Text
+			existingDev.Port = port
+			existingDev.User = userEntry.Text
+			existingDev.KeyFile = keyFile
+			existingDev.Password = password
+			updateDeviceConfig(oldHost, existingDev)
+		} else {
+			dev := &Device{
+				Name:     name,
+				Host:     hostEntry.Text,
+				Port:     port,
+				User:     userEntry.Text,
+				KeyFile:  keyFile,
+				Password: password,
+			}
+			devices = append(devices, dev)
+			State.Devices = devices
+			saveDevice(dev)
 		}
-		devices = append(devices, dev)
-		State.Devices = devices
+
 		deviceList.Refresh()
-		addWindow.Close()
+		formWindow.Close()
 	})
 
 	cancelBtn := widget.NewButtonWithIcon("Cancel", theme.CancelIcon(), func() {
-		addWindow.Close()
+		formWindow.Close()
 	})
 
 	buttons := container.NewHBox(cancelBtn, saveBtn)
@@ -330,8 +460,8 @@ func showAddDeviceWindowWithIP(ip, hostname string) {
 		container.NewCenter(buttons),
 	)
 
-	addWindow.SetContent(container.NewPadded(content))
-	addWindow.Show()
+	formWindow.SetContent(container.NewPadded(content))
+	formWindow.Show()
 }
 
 // findExistingSSHKeys looks for SSH keys in ~/.ssh/
@@ -361,21 +491,18 @@ func scanNetworkForSSH() []NetworkDevice {
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 
-	// Get local IP to determine network range
 	localIP := getLocalIP()
 	if localIP == "" {
 		return found
 	}
 
-	// Parse network range (assume /24)
 	parts := strings.Split(localIP, ".")
 	if len(parts) != 4 {
 		return found
 	}
 	baseIP := strings.Join(parts[:3], ".")
 
-	// Scan all IPs in range concurrently
-	semaphore := make(chan struct{}, 50) // Limit concurrent connections
+	semaphore := make(chan struct{}, 50)
 
 	for i := 1; i <= 254; i++ {
 		wg.Add(1)
@@ -401,7 +528,6 @@ func scanNetworkForSSH() []NetworkDevice {
 	return found
 }
 
-// getLocalIP returns the local IP address
 func getLocalIP() string {
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
@@ -418,7 +544,6 @@ func getLocalIP() string {
 	return ""
 }
 
-// hasSSH checks if a host has SSH (port 22) open
 func hasSSH(ip string) bool {
 	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:22", ip), 500*time.Millisecond)
 	if err != nil {
@@ -428,18 +553,15 @@ func hasSSH(ip string) bool {
 	return true
 }
 
-// getHostname tries to resolve the hostname for an IP
 func getHostname(ip string) string {
 	names, err := net.LookupAddr(ip)
 	if err != nil || len(names) == 0 {
 		return ""
 	}
-	// Clean up the hostname (remove trailing dot)
 	hostname := strings.TrimSuffix(names[0], ".")
 	return hostname
 }
 
-// connectToDevice connects to the selected device
 func connectToDevice(dev *Device) {
 	client, err := device.NewClient(dev.Host, dev.Port, dev.User, dev.Password, dev.KeyFile)
 	if err != nil {
@@ -454,12 +576,12 @@ func connectToDevice(dev *Device) {
 
 	dev.Client = client
 	dev.Connected = true
+	State.SelectedDevice = dev
 	deviceList.Refresh()
 
 	dialog.ShowInformation("Connected", fmt.Sprintf("Connected to %s", dev.Name), State.Window)
 }
 
-// disconnectDevice disconnects from the device
 func disconnectDevice(dev *Device) {
 	if dev.Client != nil {
 		dev.Client.Close()
@@ -469,9 +591,9 @@ func disconnectDevice(dev *Device) {
 	deviceList.Refresh()
 }
 
-// removeDevice removes a device from the list
 func removeDevice(dev *Device) {
 	disconnectDevice(dev)
+	config.RemoveDevice(dev.Host)
 	for i, d := range devices {
 		if d == dev {
 			devices = append(devices[:i], devices[i+1:]...)
@@ -479,6 +601,8 @@ func removeDevice(dev *Device) {
 		}
 	}
 	State.Devices = devices
-	State.SelectedDevice = nil
+	if State.SelectedDevice == dev {
+		State.SelectedDevice = nil
+	}
 	deviceList.Refresh()
 }

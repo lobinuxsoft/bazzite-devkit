@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -11,124 +12,356 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+
+	"github.com/lobinuxsoft/bazzite-devkit/internal/config"
 )
 
+// GameSetup represents a saved game installation setup
+type GameSetup struct {
+	ID            string
+	Name          string
+	LocalPath     string
+	Executable    string
+	LaunchOptions string
+	Tags          string
+	RemotePath    string
+}
+
 var (
-	selectedGamePath string
-	gameNameEntry    *widget.Entry
-	gameExeEntry     *widget.Entry
-	launchOptsEntry  *widget.Entry
-	progressBar      *widget.ProgressBar
-	statusLabel      *widget.Label
+	gameSetups      []*GameSetup
+	setupListWidget *widget.List
+	selectedSetup   *GameSetup
+	progressBar     *widget.ProgressBar
+	statusLabel     *widget.Label
 )
+
+func init() {
+	loadSavedGameSetups()
+}
+
+// loadSavedGameSetups loads game setups from config
+func loadSavedGameSetups() {
+	saved, err := config.GetGameSetups()
+	if err != nil {
+		return
+	}
+
+	gameSetups = make([]*GameSetup, len(saved))
+	for i, s := range saved {
+		gameSetups[i] = &GameSetup{
+			ID:            s.ID,
+			Name:          s.Name,
+			LocalPath:     s.LocalPath,
+			Executable:    s.Executable,
+			LaunchOptions: s.LaunchOptions,
+			Tags:          s.Tags,
+			RemotePath:    s.RemotePath,
+		}
+	}
+}
+
+// setupRowData stores widget references for a game setup list row
+type setupRowData struct {
+	nameLabel *widget.Label
+	pathLabel *widget.Label
+	uploadBtn *widget.Button
+	editBtn   *widget.Button
+	deleteBtn *widget.Button
+}
+
+// Map to store row data by container pointer
+var setupRowCache = make(map[fyne.CanvasObject]*setupRowData)
 
 // createUploadTab creates the game upload tab
 func createUploadTab() fyne.CanvasObject {
-	// Game name
-	gameNameEntry = widget.NewEntry()
-	gameNameEntry.SetPlaceHolder("My Game")
+	// Setup list with inline buttons
+	setupListWidget = widget.NewList(
+		func() int { return len(gameSetups) },
+		func() fyne.CanvasObject {
+			nameLabel := widget.NewLabel("Game Name")
+			pathLabel := widget.NewLabel("Path")
+			pathLabel.TextStyle = fyne.TextStyle{Italic: true}
 
-	// Local game folder
+			uploadBtn := widget.NewButtonWithIcon("", theme.UploadIcon(), nil)
+			editBtn := widget.NewButtonWithIcon("", theme.DocumentCreateIcon(), nil)
+			deleteBtn := widget.NewButtonWithIcon("", theme.DeleteIcon(), nil)
+
+			buttons := container.NewHBox(uploadBtn, editBtn, deleteBtn)
+
+			c := container.NewBorder(
+				nil, nil,
+				widget.NewIcon(theme.FolderIcon()),
+				buttons,
+				container.NewVBox(nameLabel, pathLabel),
+			)
+
+			// Store widget references
+			setupRowCache[c] = &setupRowData{
+				nameLabel: nameLabel,
+				pathLabel: pathLabel,
+				uploadBtn: uploadBtn,
+				editBtn:   editBtn,
+				deleteBtn: deleteBtn,
+			}
+
+			return c
+		},
+		func(id widget.ListItemID, obj fyne.CanvasObject) {
+			if id >= len(gameSetups) {
+				return
+			}
+			setup := gameSetups[id]
+
+			// Get cached widget references
+			row, ok := setupRowCache[obj]
+			if !ok {
+				return
+			}
+
+			row.nameLabel.SetText(setup.Name)
+			row.pathLabel.SetText(truncatePath(setup.LocalPath, 50))
+
+			row.uploadBtn.OnTapped = func() {
+				if State.SelectedDevice == nil || !State.SelectedDevice.Connected {
+					dialog.ShowError(fmt.Errorf("no device connected"), State.Window)
+					return
+				}
+				go uploadGame(setup)
+			}
+
+			row.editBtn.OnTapped = func() {
+				showGameSetupForm(setup)
+			}
+
+			row.deleteBtn.OnTapped = func() {
+				dialog.ShowConfirm("Delete Setup",
+					fmt.Sprintf("Delete setup for '%s'?", setup.Name),
+					func(ok bool) {
+						if ok {
+							removeGameSetup(setup)
+						}
+					}, State.Window)
+			}
+		},
+	)
+
+	setupListWidget.OnSelected = func(id widget.ListItemID) {
+		if id < len(gameSetups) {
+			selectedSetup = gameSetups[id]
+		}
+	}
+
+	// Top buttons
+	addBtn := widget.NewButtonWithIcon("New Game Setup", theme.ContentAddIcon(), func() {
+		showGameSetupForm(nil)
+	})
+
+	// Progress section
+	progressBar = widget.NewProgressBar()
+	progressBar.Hide()
+	statusLabel = widget.NewLabel("")
+
+	topBar := container.NewVBox(
+		container.NewHBox(addBtn),
+		widget.NewSeparator(),
+		widget.NewLabel("Saved Game Setups (click upload icon to install):"),
+	)
+
+	bottomBar := container.NewVBox(
+		widget.NewSeparator(),
+		progressBar,
+		statusLabel,
+	)
+
+	return container.NewBorder(
+		topBar,
+		bottomBar,
+		nil, nil,
+		setupListWidget,
+	)
+}
+
+// showGameSetupForm shows a form to add or edit a game setup
+func showGameSetupForm(existingSetup *GameSetup) {
+	isEdit := existingSetup != nil
+	title := "New Game Setup"
+	if isEdit {
+		title = "Edit Game Setup"
+	}
+
+	formWindow := fyne.CurrentApp().NewWindow(title)
+	formWindow.Resize(fyne.NewSize(550, 450))
+
+	nameEntry := widget.NewEntry()
 	localPathLabel := widget.NewLabel("No folder selected")
-	selectFolderBtn := widget.NewButton("Select Game Folder", func() {
+	exeEntry := widget.NewEntry()
+	launchOptsEntry := widget.NewEntry()
+	tagsEntry := widget.NewEntry()
+	remotePathEntry := widget.NewEntry()
+
+	var localPath string
+
+	if isEdit {
+		nameEntry.SetText(existingSetup.Name)
+		localPath = existingSetup.LocalPath
+		localPathLabel.SetText(truncatePath(localPath, 40))
+		exeEntry.SetText(existingSetup.Executable)
+		launchOptsEntry.SetText(existingSetup.LaunchOptions)
+		tagsEntry.SetText(existingSetup.Tags)
+		remotePathEntry.SetText(existingSetup.RemotePath)
+	} else {
+		nameEntry.SetPlaceHolder("My Game")
+		exeEntry.SetPlaceHolder("game.x86_64 or game.sh")
+		launchOptsEntry.SetPlaceHolder("Optional launch arguments")
+		tagsEntry.SetPlaceHolder("tag1, tag2 (optional)")
+		remotePathEntry.SetText("~/devkit-games")
+	}
+
+	selectFolderBtn := widget.NewButtonWithIcon("Browse", theme.FolderOpenIcon(), func() {
 		dialog.ShowFolderOpen(func(uri fyne.ListableURI, err error) {
 			if err != nil || uri == nil {
 				return
 			}
-			selectedGamePath = uri.Path()
-			localPathLabel.SetText(selectedGamePath)
+			localPath = uri.Path()
+			localPathLabel.SetText(truncatePath(localPath, 40))
 
-			// Auto-fill game name from folder
-			if gameNameEntry.Text == "" {
-				gameNameEntry.SetText(filepath.Base(selectedGamePath))
+			if nameEntry.Text == "" {
+				nameEntry.SetText(filepath.Base(localPath))
 			}
 		}, State.Window)
 	})
 
-	// Executable path (relative to game folder)
-	gameExeEntry = widget.NewEntry()
-	gameExeEntry.SetPlaceHolder("game.exe or game.sh")
-
-	// Launch options
-	launchOptsEntry = widget.NewEntry()
-	launchOptsEntry.SetPlaceHolder("Optional launch arguments")
-
-	// Tags
-	tagsEntry := widget.NewEntry()
-	tagsEntry.SetPlaceHolder("tag1, tag2 (optional)")
-
-	// Remote destination
-	remotePathEntry := widget.NewEntry()
-	remotePathEntry.SetText("~/devkit-games")
-
-	// Form
 	form := widget.NewForm(
-		widget.NewFormItem("Game Name", gameNameEntry),
-		widget.NewFormItem("Local Folder", container.NewHBox(localPathLabel, selectFolderBtn)),
-		widget.NewFormItem("Executable", gameExeEntry),
+		widget.NewFormItem("Game Name", nameEntry),
+		widget.NewFormItem("Local Folder", container.NewBorder(nil, nil, nil, selectFolderBtn, localPathLabel)),
+		widget.NewFormItem("Executable", exeEntry),
 		widget.NewFormItem("Launch Options", launchOptsEntry),
 		widget.NewFormItem("Tags", tagsEntry),
 		widget.NewFormItem("Remote Path", remotePathEntry),
 	)
 
-	// Progress
-	progressBar = widget.NewProgressBar()
-	progressBar.Hide()
-
-	statusLabel = widget.NewLabel("")
-
-	// Upload button
-	uploadBtn := widget.NewButton("Upload & Create Shortcut", func() {
-		if State.SelectedDevice == nil || !State.SelectedDevice.Connected {
-			dialog.ShowError(fmt.Errorf("no device connected"), State.Window)
+	saveBtn := widget.NewButtonWithIcon("Save Setup", theme.ConfirmIcon(), func() {
+		if nameEntry.Text == "" {
+			dialog.ShowError(fmt.Errorf("game name is required"), formWindow)
 			return
 		}
-		if selectedGamePath == "" {
-			dialog.ShowError(fmt.Errorf("no game folder selected"), State.Window)
+		if localPath == "" {
+			dialog.ShowError(fmt.Errorf("local folder is required"), formWindow)
 			return
 		}
-		if gameNameEntry.Text == "" {
-			dialog.ShowError(fmt.Errorf("game name is required"), State.Window)
-			return
-		}
-		if gameExeEntry.Text == "" {
-			dialog.ShowError(fmt.Errorf("executable path is required"), State.Window)
+		if exeEntry.Text == "" {
+			dialog.ShowError(fmt.Errorf("executable is required"), formWindow)
 			return
 		}
 
-		go uploadGame(
-			selectedGamePath,
-			gameNameEntry.Text,
-			gameExeEntry.Text,
-			launchOptsEntry.Text,
-			tagsEntry.Text,
-			remotePathEntry.Text,
-		)
+		if isEdit {
+			existingSetup.Name = nameEntry.Text
+			existingSetup.LocalPath = localPath
+			existingSetup.Executable = exeEntry.Text
+			existingSetup.LaunchOptions = launchOptsEntry.Text
+			existingSetup.Tags = tagsEntry.Text
+			existingSetup.RemotePath = remotePathEntry.Text
+			updateGameSetup(existingSetup)
+		} else {
+			setup := &GameSetup{
+				Name:          nameEntry.Text,
+				LocalPath:     localPath,
+				Executable:    exeEntry.Text,
+				LaunchOptions: launchOptsEntry.Text,
+				Tags:          tagsEntry.Text,
+				RemotePath:    remotePathEntry.Text,
+			}
+			addGameSetup(setup)
+		}
+
+		setupListWidget.Refresh()
+		formWindow.Close()
 	})
 
-	return container.NewVBox(
-		widget.NewLabel("Upload Game to Device"),
+	cancelBtn := widget.NewButtonWithIcon("Cancel", theme.CancelIcon(), func() {
+		formWindow.Close()
+	})
+
+	buttons := container.NewHBox(cancelBtn, saveBtn)
+
+	content := container.NewVBox(
+		widget.NewLabelWithStyle("Game Installation Setup", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}),
 		widget.NewSeparator(),
 		form,
 		widget.NewSeparator(),
-		uploadBtn,
-		progressBar,
-		statusLabel,
+		container.NewCenter(buttons),
 	)
+
+	formWindow.SetContent(container.NewPadded(content))
+	formWindow.Show()
+}
+
+// addGameSetup adds a new game setup
+func addGameSetup(setup *GameSetup) {
+	gameSetups = append(gameSetups, setup)
+	config.AddGameSetup(config.GameSetup{
+		Name:          setup.Name,
+		LocalPath:     setup.LocalPath,
+		Executable:    setup.Executable,
+		LaunchOptions: setup.LaunchOptions,
+		Tags:          setup.Tags,
+		RemotePath:    setup.RemotePath,
+	})
+}
+
+// updateGameSetup updates an existing game setup
+func updateGameSetup(setup *GameSetup) {
+	config.UpdateGameSetup(setup.ID, config.GameSetup{
+		ID:            setup.ID,
+		Name:          setup.Name,
+		LocalPath:     setup.LocalPath,
+		Executable:    setup.Executable,
+		LaunchOptions: setup.LaunchOptions,
+		Tags:          setup.Tags,
+		RemotePath:    setup.RemotePath,
+	})
+}
+
+// removeGameSetup removes a game setup
+func removeGameSetup(setup *GameSetup) {
+	config.RemoveGameSetup(setup.ID)
+	for i, s := range gameSetups {
+		if s == setup {
+			gameSetups = append(gameSetups[:i], gameSetups[i+1:]...)
+			break
+		}
+	}
+	selectedSetup = nil
+	setupListWidget.Refresh()
+}
+
+// truncatePath truncates a path for display
+func truncatePath(p string, maxLen int) string {
+	if len(p) <= maxLen {
+		return p
+	}
+	return "..." + p[len(p)-maxLen+3:]
 }
 
 // uploadGame uploads a game to the remote device and creates a shortcut
-func uploadGame(localPath, gameName, exe, launchOpts, tags, remotePath string) {
+func uploadGame(setup *GameSetup) {
 	dev := State.SelectedDevice
 
 	progressBar.Show()
 	progressBar.SetValue(0)
 	statusLabel.SetText("Preparing upload...")
 
-	// Expand remote path
-	remotePath = expandPath(remotePath)
-	remoteGamePath := filepath.Join(remotePath, gameName)
+	// Expand remote path (~ to remote home directory)
+	remotePath, err := expandRemotePath(dev, setup.RemotePath)
+	if err != nil {
+		showUploadError(fmt.Errorf("failed to expand remote path: %w", err))
+		return
+	}
+
+	// Use path.Join for Linux-style paths (forward slashes)
+	remoteGamePath := path.Join(remotePath, setup.Name)
 
 	// Create remote directory
 	statusLabel.SetText("Creating remote directory...")
@@ -139,7 +372,7 @@ func uploadGame(localPath, gameName, exe, launchOpts, tags, remotePath string) {
 
 	// Get list of files to upload
 	statusLabel.SetText("Scanning files...")
-	files, err := getFilesToUpload(localPath)
+	files, err := getFilesToUpload(setup.LocalPath)
 	if err != nil {
 		showUploadError(err)
 		return
@@ -148,11 +381,15 @@ func uploadGame(localPath, gameName, exe, launchOpts, tags, remotePath string) {
 	// Upload files
 	totalFiles := len(files)
 	for i, file := range files {
-		relPath, _ := filepath.Rel(localPath, file)
-		remoteDest := filepath.Join(remoteGamePath, relPath)
+		// Get relative path from local folder
+		relPath, _ := filepath.Rel(setup.LocalPath, file)
+		// Convert Windows backslashes to forward slashes for Linux
+		relPath = strings.ReplaceAll(relPath, "\\", "/")
+		// Build remote destination path
+		remoteDest := path.Join(remoteGamePath, relPath)
 
 		// Ensure parent directory exists
-		remoteDir := filepath.Dir(remoteDest)
+		remoteDir := path.Dir(remoteDest)
 		dev.Client.MkdirAll(remoteDir)
 
 		statusLabel.SetText(fmt.Sprintf("Uploading: %s", relPath))
@@ -164,12 +401,27 @@ func uploadGame(localPath, gameName, exe, launchOpts, tags, remotePath string) {
 		}
 	}
 
+	progressBar.SetValue(0.85)
+	statusLabel.SetText("Setting executable permissions...")
+
+	// Create shortcut using steam-shortcut-manager (use Linux paths)
+	exePath := path.Join(remoteGamePath, setup.Executable)
+
+	// Set executable permissions on the main executable
+	chmodCmd := fmt.Sprintf("chmod +x %q", exePath)
+	if _, err := dev.Client.RunCommand(chmodCmd); err != nil {
+		showUploadError(fmt.Errorf("failed to set executable permissions: %w", err))
+		return
+	}
+
+	// Also set executable permissions on all .sh files and common executable extensions
+	chmodAllCmd := fmt.Sprintf("find %q -type f \\( -name '*.sh' -o -name '*.x86_64' -o -name '*.x86' \\) -exec chmod +x {} \\;", remoteGamePath)
+	dev.Client.RunCommand(chmodAllCmd) // Ignore errors, this is optional
+
 	progressBar.SetValue(0.9)
 	statusLabel.SetText("Creating Steam shortcut...")
 
-	// Create shortcut using steam-shortcut-manager
-	exePath := filepath.Join(remoteGamePath, exe)
-	if err := createShortcut(dev, gameName, exePath, remoteGamePath, launchOpts, tags); err != nil {
+	if err := createShortcut(dev, setup.Name, exePath, remoteGamePath, setup.LaunchOptions, setup.Tags); err != nil {
 		showUploadError(err)
 		return
 	}
@@ -179,7 +431,7 @@ func uploadGame(localPath, gameName, exe, launchOpts, tags, remotePath string) {
 	progressBar.Hide()
 
 	dialog.ShowInformation("Success",
-		fmt.Sprintf("Game '%s' uploaded and shortcut created!", gameName),
+		fmt.Sprintf("Game '%s' uploaded and shortcut created!", setup.Name),
 		State.Window)
 }
 
@@ -200,13 +452,11 @@ func getFilesToUpload(root string) ([]string, error) {
 
 // createShortcut creates a Steam shortcut on the remote device using local steam-shortcut-manager with remote flags
 func createShortcut(dev *Device, name, exe, startDir, launchOpts, tags string) error {
-	// Find the steam-shortcut-manager binary (next to our executable)
 	binaryName := "steam-shortcut-manager"
 	if runtime.GOOS == "windows" {
 		binaryName = "steam-shortcut-manager.exe"
 	}
 
-	// Look for the binary in the same directory as the main executable
 	execPath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("failed to get executable path: %w", err)
@@ -214,19 +464,16 @@ func createShortcut(dev *Device, name, exe, startDir, launchOpts, tags string) e
 	execDir := filepath.Dir(execPath)
 	binaryPath := filepath.Join(execDir, binaryName)
 
-	// Check if binary exists
 	if _, err := os.Stat(binaryPath); os.IsNotExist(err) {
 		return fmt.Errorf("steam-shortcut-manager not found at %s", binaryPath)
 	}
 
-	// Build command arguments
 	args := []string{
 		"--remote-host", dev.Host,
 		"--remote-port", fmt.Sprintf("%d", dev.Port),
 		"--remote-user", dev.User,
 	}
 
-	// Add authentication
 	if dev.Password != "" {
 		args = append(args, "--remote-password", dev.Password)
 	}
@@ -234,7 +481,6 @@ func createShortcut(dev *Device, name, exe, startDir, launchOpts, tags string) e
 		args = append(args, "--remote-key", dev.KeyFile)
 	}
 
-	// Add the 'add' command and its arguments
 	args = append(args, "add", name, exe, "--start-dir", startDir)
 
 	if launchOpts != "" {
@@ -244,7 +490,6 @@ func createShortcut(dev *Device, name, exe, startDir, launchOpts, tags string) e
 		args = append(args, "--tags", tags)
 	}
 
-	// Execute the command
 	cmd := exec.Command(binaryPath, args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -254,13 +499,16 @@ func createShortcut(dev *Device, name, exe, startDir, launchOpts, tags string) e
 	return nil
 }
 
-// expandPath expands ~ to home directory
-func expandPath(path string) string {
-	if len(path) > 0 && path[0] == '~' {
-		home, _ := os.UserHomeDir()
-		return filepath.Join(home, path[1:])
+// expandRemotePath expands ~ to the remote home directory
+func expandRemotePath(dev *Device, remotePath string) (string, error) {
+	if strings.HasPrefix(remotePath, "~") {
+		homeDir, err := dev.Client.GetHomeDir()
+		if err != nil {
+			return "", err
+		}
+		remotePath = strings.Replace(remotePath, "~", homeDir, 1)
 	}
-	return path
+	return remotePath, nil
 }
 
 // showUploadError shows an error dialog and resets the progress
