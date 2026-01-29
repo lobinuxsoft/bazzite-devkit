@@ -6,6 +6,9 @@ build/
 *.dylib
 bazzite-devkit
 
+# Embedded binaries (generated during build)
+internal/embedded/steam-shortcut-manager
+
 # Go
 go.sum
 
