@@ -1,6 +1,6 @@
 module github.com/lobinuxsoft/bazzite-devkit
 
-go 1.23
+go 1.24.0
 
 require (
 	github.com/pkg/sftp v1.13.6
@@ -39,5 +39,5 @@ require (
 	github.com/wakeful-cloud/vdf v0.0.0-20210218214150-0be6ec18b390 // indirect
 	golang.org/x/net v0.35.0 // indirect
 	golang.org/x/sys v0.30.0 // indirect
-	golang.org/x/text v0.22.0 // indirect
+	golang.org/x/text v0.33.0 // indirect
 )

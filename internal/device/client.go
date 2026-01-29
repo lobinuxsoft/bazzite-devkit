@@ -202,6 +202,31 @@ func (c *Client) GetHomeDir() (string, error) {
 	return strings.TrimSpace(output), nil
 }
 
+// WriteFile writes data directly to a file on the remote host
+func (c *Client) WriteFile(remotePath string, data []byte, perm os.FileMode) error {
+	remotePath = strings.ReplaceAll(remotePath, "\\", "/")
+
+	// Create remote file
+	remoteFile, err := c.sftpClient.Create(remotePath)
+	if err != nil {
+		return fmt.Errorf("failed to create remote file: %w", err)
+	}
+	defer remoteFile.Close()
+
+	// Write data
+	_, err = remoteFile.Write(data)
+	if err != nil {
+		return fmt.Errorf("failed to write data: %w", err)
+	}
+
+	// Set permissions
+	if err := c.sftpClient.Chmod(remotePath, perm); err != nil {
+		fmt.Printf("Warning: failed to set permissions on %s: %v\n", remotePath, err)
+	}
+
+	return nil
+}
+
 // expandPath expands ~ to home directory
 func expandPath(path string) string {
 	if len(path) > 0 && path[0] == '~' {

@@ -18,6 +18,7 @@ import (
 
 	"github.com/lobinuxsoft/bazzite-devkit/internal/config"
 	"github.com/lobinuxsoft/bazzite-devkit/internal/device"
+	"github.com/lobinuxsoft/bazzite-devkit/internal/embedded"
 	"github.com/lobinuxsoft/bazzite-devkit/internal/shortcuts"
 	"github.com/lobinuxsoft/bazzite-devkit/internal/steamgriddb"
 )
@@ -378,6 +379,18 @@ func (a *App) performUpload(client *device.Client, deviceCfg *config.DeviceConfi
 	chmodAllCmd := fmt.Sprintf("find %q -type f \\( -name '*.sh' -o -name '*.x86_64' -o -name '*.x86' \\) -exec chmod +x {} \\;", remoteGamePath)
 	client.RunCommand(chmodAllCmd)
 
+	// Ensure steam-shortcut-manager binary exists on remote device
+	emitProgress(0.87, "Checking steam-shortcut-manager binary...", "", false)
+
+	binaryRemotePath := path.Join(remotePath, embedded.SteamShortcutManagerName)
+	if !shortcuts.EnsureBinaryExists(client, binaryRemotePath) {
+		emitProgress(0.88, "Uploading steam-shortcut-manager binary...", "", false)
+		if err := shortcuts.UploadBinary(client, embedded.SteamShortcutManager, binaryRemotePath); err != nil {
+			emitProgress(0, "", fmt.Sprintf("Failed to upload binary: %v", err), true)
+			return
+		}
+	}
+
 	emitProgress(0.9, "Creating Steam shortcut...", "", false)
 
 	// Prepare artwork config
@@ -411,7 +424,7 @@ func (a *App) performUpload(client *device.Client, deviceCfg *config.DeviceConfi
 	}
 
 	tags := shortcuts.ParseTags(setup.Tags)
-	if err := shortcuts.AddShortcutWithArtwork(remoteCfg, setup.Name, exePath, remoteGamePath, setup.LaunchOptions, tags, artworkCfg); err != nil {
+	if err := shortcuts.AddShortcutWithArtwork(remoteCfg, setup.Name, exePath, remoteGamePath, setup.LaunchOptions, tags, artworkCfg, binaryRemotePath); err != nil {
 		emitProgress(0, "", fmt.Sprintf("Failed to create shortcut: %v", err), true)
 		return
 	}

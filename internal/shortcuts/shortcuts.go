@@ -1,14 +1,12 @@
 // Package shortcuts provides Steam shortcut management functions
-// using the steam-shortcut-manager library directly
+// using the steam-shortcut-manager library and binary
 package shortcuts
 
 import (
 	"fmt"
-	"io"
-	"net/http"
-	"path/filepath"
 	"strings"
 
+	"github.com/lobinuxsoft/bazzite-devkit/internal/device"
 	"github.com/shadowblip/steam-shortcut-manager/pkg/remote"
 	"github.com/shadowblip/steam-shortcut-manager/pkg/shortcut"
 	"github.com/shadowblip/steam-shortcut-manager/pkg/steam"
@@ -34,11 +32,13 @@ type RemoteConfig struct {
 
 // AddShortcut adds a Steam shortcut on a remote device
 func AddShortcut(cfg *RemoteConfig, name, exe, startDir, launchOpts string, tags []string) error {
-	return AddShortcutWithArtwork(cfg, name, exe, startDir, launchOpts, tags, nil)
+	return AddShortcutWithArtwork(cfg, name, exe, startDir, launchOpts, tags, nil, "")
 }
 
-// AddShortcutWithArtwork adds a Steam shortcut with custom artwork on a remote device
-func AddShortcutWithArtwork(cfg *RemoteConfig, name, exe, startDir, launchOpts string, tags []string, artwork *ArtworkConfig) error {
+// AddShortcutWithArtwork adds a Steam shortcut with custom artwork on a remote device.
+// If binaryPath is provided, it will use the remote binary to apply artwork via Steam CEF API.
+// If binaryPath is empty, artwork application will be skipped.
+func AddShortcutWithArtwork(cfg *RemoteConfig, name, exe, startDir, launchOpts string, tags []string, artwork *ArtworkConfig, binaryPath string) error {
 	// Create and connect remote client
 	client := remote.NewClient(&remote.Config{
 		Host:     cfg.Host,
@@ -67,9 +67,13 @@ func AddShortcutWithArtwork(cfg *RemoteConfig, name, exe, startDir, launchOpts s
 		return fmt.Errorf("no Steam users found on remote device")
 	}
 
-	// Calculate appID for artwork naming
-	appID := shortcut.CalculateAppID(exe, name)
-	fmt.Printf("[DEBUG] Calculated AppID for '%s' (exe: %s): %d\n", name, exe, appID)
+	// Format exe and startDir with quotes (Steam expects quoted paths)
+	quotedExe := fmt.Sprintf("\"%s\"", exe)
+	quotedStartDir := fmt.Sprintf("\"%s\"", startDir)
+
+	// Calculate appID for artwork naming using quoted exe (matches Steam's internal calculation)
+	appID := shortcut.CalculateAppID(quotedExe, name)
+	fmt.Printf("[DEBUG] Calculated AppID for '%s' (exe: %s): %d\n", name, quotedExe, appID)
 
 	// Add shortcut for all users
 	for _, user := range users {
@@ -89,11 +93,11 @@ func AddShortcutWithArtwork(cfg *RemoteConfig, name, exe, startDir, launchOpts s
 			shortcuts = shortcut.NewShortcuts()
 		}
 
-		// Create new shortcut
-		newShortcut := shortcut.NewShortcut(name, exe, func(s *shortcut.Shortcut) {
+		// Create new shortcut with quoted paths
+		newShortcut := shortcut.NewShortcut(name, quotedExe, func(s *shortcut.Shortcut) {
 			s.AllowDesktopConfig = 1
 			s.AllowOverlay = 1
-			s.StartDir = startDir
+			s.StartDir = quotedStartDir
 			s.LaunchOptions = launchOpts
 			s.Appid = int64(appID)
 
@@ -114,122 +118,106 @@ func AddShortcutWithArtwork(cfg *RemoteConfig, name, exe, startDir, launchOpts s
 			return fmt.Errorf("failed to save shortcuts for user %s: %w", user, err)
 		}
 
-		// Download and upload artwork if provided
-		if artwork != nil {
-			// Construct the grid path manually (userdata/USER_ID/config/grid)
-			shortcutsDir := filepath.Dir(shortcutsPath) // userdata/USER_ID/config
-			gridPath := filepath.Join(shortcutsDir, "grid")
-			// Convert to forward slashes for Linux
-			gridPath = strings.ReplaceAll(gridPath, "\\", "/")
-
-			fmt.Printf("[DEBUG] Artwork config received:\n")
-			fmt.Printf("  GridPortrait (capsule 600x900): %s\n", artwork.GridPortrait)
-			fmt.Printf("  GridLandscape (wide 920x430): %s\n", artwork.GridLandscape)
-			fmt.Printf("  HeroImage: %s\n", artwork.HeroImage)
-			fmt.Printf("  LogoImage: %s\n", artwork.LogoImage)
-			fmt.Printf("  IconImage: %s\n", artwork.IconImage)
-			fmt.Printf("[DEBUG] AppID: %d, Grid path: %s\n", appID, gridPath)
-
-			// Ensure grid directory exists
-			client.RunCommand(fmt.Sprintf("mkdir -p %q", gridPath))
-
-			// Delete any existing artwork for this appID to avoid caching issues
-			fmt.Printf("[DEBUG] Cleaning existing artwork for appID %d...\n", appID)
-			client.RunCommand(fmt.Sprintf("rm -f %q/%dp.* %q/%d.* %q/%d_hero.* %q/%d_logo.* %q/%d_icon.*",
-				gridPath, appID, gridPath, appID, gridPath, appID, gridPath, appID, gridPath, appID))
-
-			// Download and upload each artwork type
-			// Steam artwork naming convention:
-			// - {appID}p.png = Portrait capsule (600x900) - shown in library grid
-			// - {appID}.png = Horizontal/Wide capsule (920x430 or 460x215)
-			// - {appID}_hero.png = Hero banner (1920x620)
-			// - {appID}_logo.png = Logo with transparency
-			// - {appID}_icon.png = Square icon
-			if artwork.GridPortrait != "" {
-				fmt.Println("[DEBUG] Uploading GridPortrait (capsule) as appID_p...")
-				downloadAndUploadArtwork(client, artwork.GridPortrait, gridPath, fmt.Sprintf("%dp", appID))
-			}
-			if artwork.GridLandscape != "" {
-				fmt.Println("[DEBUG] Uploading GridLandscape (wide) as appID...")
-				downloadAndUploadArtwork(client, artwork.GridLandscape, gridPath, fmt.Sprintf("%d", appID))
-			}
-			if artwork.HeroImage != "" {
-				fmt.Println("[DEBUG] Uploading HeroImage as appID_hero...")
-				downloadAndUploadArtwork(client, artwork.HeroImage, gridPath, fmt.Sprintf("%d_hero", appID))
-			}
-			if artwork.LogoImage != "" {
-				fmt.Println("[DEBUG] Uploading LogoImage as appID_logo...")
-				downloadAndUploadArtwork(client, artwork.LogoImage, gridPath, fmt.Sprintf("%d_logo", appID))
-			}
-			if artwork.IconImage != "" {
-				fmt.Println("[DEBUG] Uploading IconImage as appID_icon...")
-				downloadAndUploadArtwork(client, artwork.IconImage, gridPath, fmt.Sprintf("%d_icon", appID))
+		// Verify the saved shortcut by re-reading it
+		verifyShortcuts, err := shortcut.Load(shortcutsPath)
+		if err != nil {
+			fmt.Printf("[DEBUG] Failed to re-read shortcuts for verification: %v\n", err)
+		} else {
+			if savedSC, err := verifyShortcuts.LookupByName(name); err == nil {
+				fmt.Printf("[DEBUG] VERIFICATION - Saved shortcut:\n")
+				fmt.Printf("  AppName: %s\n", savedSC.AppName)
+				fmt.Printf("  Exe: %s\n", savedSC.Exe)
+				fmt.Printf("  StartDir: %s\n", savedSC.StartDir)
+				fmt.Printf("  Appid (from file): %d\n", savedSC.Appid)
+				fmt.Printf("  Expected Appid: %d\n", appID)
+				if savedSC.Appid != int64(appID) {
+					fmt.Printf("[WARNING] AppID mismatch! File has %d, expected %d\n", savedSC.Appid, appID)
+				}
+			} else {
+				fmt.Printf("[DEBUG] Could not find saved shortcut by name: %v\n", err)
 			}
 		}
+	}
+
+	// Apply artwork using the remote binary if provided
+	if artwork != nil && binaryPath != "" {
+		fmt.Printf("[DEBUG] Applying artwork for AppID %d using remote binary: %s\n", appID, binaryPath)
+		if err := applyArtworkViaBinary(client, binaryPath, appID, artwork); err != nil {
+			fmt.Printf("[WARNING] Failed to apply artwork via binary: %v\n", err)
+		}
+	} else if artwork != nil {
+		fmt.Printf("[WARNING] Artwork config provided but no binary path, skipping artwork application\n")
 	}
 
 	return nil
 }
 
-// downloadAndUploadArtwork downloads an image from URL and uploads it to remote path
-func downloadAndUploadArtwork(client *remote.Client, url, remotePath, baseName string) error {
-	fmt.Printf("[DEBUG] Downloading artwork: %s -> %s/%s\n", url, remotePath, baseName)
+// applyArtworkViaBinary executes the steam-shortcut-manager binary on the remote device
+// to apply artwork using the Steam CEF API
+func applyArtworkViaBinary(client *remote.Client, binaryPath string, appID uint64, artwork *ArtworkConfig) error {
+	// Build the command with flags
+	var args []string
+	args = append(args, "steamgriddb", "apply")
+	args = append(args, fmt.Sprintf("--app-id=%d", appID))
 
-	// Download the image
-	resp, err := http.Get(url)
+	if artwork.GridPortrait != "" {
+		args = append(args, fmt.Sprintf("--grid-portrait=%q", artwork.GridPortrait))
+	}
+	if artwork.GridLandscape != "" {
+		args = append(args, fmt.Sprintf("--grid-landscape=%q", artwork.GridLandscape))
+	}
+	if artwork.HeroImage != "" {
+		args = append(args, fmt.Sprintf("--hero=%q", artwork.HeroImage))
+	}
+	if artwork.LogoImage != "" {
+		args = append(args, fmt.Sprintf("--logo=%q", artwork.LogoImage))
+	}
+	if artwork.IconImage != "" {
+		args = append(args, fmt.Sprintf("--icon=%q", artwork.IconImage))
+	}
+
+	// Build full command
+	cmd := fmt.Sprintf("%q %s", binaryPath, strings.Join(args, " "))
+	fmt.Printf("[DEBUG] Executing remote command: %s\n", cmd)
+
+	// Execute on remote device
+	output, err := client.RunCommand(cmd)
 	if err != nil {
-		return fmt.Errorf("failed to download artwork: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to download artwork: HTTP %d", resp.StatusCode)
+		return fmt.Errorf("command failed: %w (output: %s)", err, output)
 	}
 
-	// Read image data
-	data, err := io.ReadAll(resp.Body)
+	fmt.Printf("[DEBUG] Remote command output:\n%s\n", output)
+	return nil
+}
+
+// EnsureBinaryExists checks if the steam-shortcut-manager binary exists on the remote device
+// at the specified path. Returns true if it exists, false otherwise.
+func EnsureBinaryExists(client *device.Client, remotePath string) bool {
+	cmd := fmt.Sprintf("test -x %q && echo 'exists'", remotePath)
+	output, err := client.RunCommand(cmd)
 	if err != nil {
-		return fmt.Errorf("failed to read artwork data: %w", err)
+		return false
+	}
+	return strings.TrimSpace(output) == "exists"
+}
+
+// UploadBinary uploads the steam-shortcut-manager binary to the remote device
+func UploadBinary(client *device.Client, binaryData []byte, remotePath string) error {
+	fmt.Printf("[DEBUG] Uploading steam-shortcut-manager binary to %s (%d bytes)\n", remotePath, len(binaryData))
+
+	// Write the binary file
+	if err := client.WriteFile(remotePath, binaryData, 0755); err != nil {
+		return fmt.Errorf("failed to write binary: %w", err)
 	}
 
-	fmt.Printf("[DEBUG] Downloaded %d bytes, Content-Type: %s\n", len(data), resp.Header.Get("Content-Type"))
-
-	// Determine file extension - ALWAYS prefer Content-Type over URL
-	// because URLs may have query parameters that confuse filepath.Ext
-	contentType := resp.Header.Get("Content-Type")
-	var ext string
-	switch {
-	case strings.Contains(contentType, "png"):
-		ext = ".png"
-	case strings.Contains(contentType, "jpeg"), strings.Contains(contentType, "jpg"):
-		ext = ".jpg"
-	case strings.Contains(contentType, "webp"):
-		ext = ".webp"
-	case strings.Contains(contentType, "gif"):
-		ext = ".gif"
-	default:
-		// Fallback: try to extract from URL path (without query params)
-		urlPath := url
-		if idx := strings.Index(url, "?"); idx != -1 {
-			urlPath = url[:idx]
-		}
-		ext = filepath.Ext(urlPath)
-		if ext == "" {
-			ext = ".png"
-		}
+	// Verify it's executable
+	cmd := fmt.Sprintf("chmod +x %q && test -x %q && echo 'ok'", remotePath, remotePath)
+	output, err := client.RunCommand(cmd)
+	if err != nil || strings.TrimSpace(output) != "ok" {
+		return fmt.Errorf("failed to set executable permissions")
 	}
 
-	// Upload to remote using WriteFile
-	remoteDest := filepath.Join(remotePath, baseName+ext)
-	// Convert to forward slashes for Linux
-	remoteDest = strings.ReplaceAll(remoteDest, "\\", "/")
-
-	fmt.Printf("[DEBUG] Uploading to: %s\n", remoteDest)
-
-	if err := client.WriteFile(remoteDest, data, 0644); err != nil {
-		return fmt.Errorf("failed to upload artwork: %w", err)
-	}
-
+	fmt.Printf("[DEBUG] Binary uploaded and verified successfully\n")
 	return nil
 }
 
