@@ -31,11 +31,15 @@ build:    Cambios en build/deps
 [footer opcional - referencias a issues]
 ```
 
-## Scopes (this project)
+## Scopes (CapyDeploy)
 ```
+hub:       Hub app (Wails desktop)
+agent:     Agent daemon (handheld)
 frontend:  UI Svelte/Tailwind
-backend:   Go backend logic
-device:    Cliente SSH/SFTP
+protocol:  Shared message types
+discovery: mDNS client/server
+transfer:  Chunked file upload
+steam:     Steam integration
 config:    Configuracion
 shortcuts: Shortcuts de Steam
 artwork:   SteamGridDB integration
