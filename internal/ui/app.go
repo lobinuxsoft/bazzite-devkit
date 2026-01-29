@@ -3,12 +3,17 @@ package ui
 import (
 	"fmt"
 	"image/color"
+	"os/exec"
+	"runtime"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
+
+	"github.com/lobinuxsoft/bazzite-devkit/internal/config"
 )
 
 // AppState holds the global application state
@@ -97,6 +102,20 @@ func UpdateConnectionStatus() {
 	}
 }
 
+// formatBytes formats bytes into human readable string
+func formatBytes(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
 // createSettingsTab creates the settings tab
 func createSettingsTab() fyne.CanvasObject {
 	// Default paths
@@ -106,19 +125,104 @@ func createSettingsTab() fyne.CanvasObject {
 	gamePathEntry := widget.NewEntry()
 	gamePathEntry.SetPlaceHolder("~/devkit-games")
 
+	// SteamGridDB API key
+	apiKeyEntry := widget.NewPasswordEntry()
+	apiKeyEntry.SetPlaceHolder("Your SteamGridDB API key")
+
+	// Load existing API key
+	if apiKey, err := config.GetSteamGridDBAPIKey(); err == nil && apiKey != "" {
+		apiKeyEntry.SetText(apiKey)
+	}
+
+	apiKeyHelp := widget.NewRichTextFromMarkdown("Get your API key from [steamgriddb.com/profile/preferences/api](https://www.steamgriddb.com/profile/preferences/api)")
+
 	form := widget.NewForm(
 		widget.NewFormItem("Steam Path", steamPathEntry),
 		widget.NewFormItem("Games Path", gamePathEntry),
 	)
 
+	apiKeyForm := widget.NewForm(
+		widget.NewFormItem("API Key", apiKeyEntry),
+	)
+
 	saveBtn := widget.NewButton("Save Settings", func() {
-		// TODO: Save settings
+		// Save API key
+		if err := config.SetSteamGridDBAPIKey(apiKeyEntry.Text); err != nil {
+			dialog.ShowError(fmt.Errorf("failed to save API key: %w", err), State.Window)
+			return
+		}
+		dialog.ShowInformation("Saved", "Settings saved successfully", State.Window)
 	})
 
+	// Cache management
+	cacheSizeLabel := widget.NewLabel("Calculating...")
+	updateCacheSize := func() {
+		size, err := GetCacheSize()
+		if err != nil {
+			cacheSizeLabel.SetText("Unable to calculate")
+		} else {
+			cacheSizeLabel.SetText(formatBytes(size))
+		}
+	}
+	go updateCacheSize()
+
+	clearCacheBtn := widget.NewButton("Clear Cache", func() {
+		dialog.ShowConfirm("Clear Cache",
+			"This will delete all cached SteamGridDB images.\nAre you sure?",
+			func(ok bool) {
+				if ok {
+					if err := ClearImageCache(); err != nil {
+						dialog.ShowError(fmt.Errorf("failed to clear cache: %w", err), State.Window)
+						return
+					}
+					dialog.ShowInformation("Cache Cleared", "Image cache has been cleared", State.Window)
+					go updateCacheSize()
+				}
+			}, State.Window)
+	})
+
+	openCacheFolderBtn := widget.NewButton("Open Cache Folder", func() {
+		cacheDir, err := GetImageCacheDir()
+		if err != nil {
+			dialog.ShowError(fmt.Errorf("failed to get cache directory: %w", err), State.Window)
+			return
+		}
+		// Open folder in file explorer
+		var cmd *exec.Cmd
+		switch runtime.GOOS {
+		case "windows":
+			cmd = exec.Command("explorer", cacheDir)
+		case "darwin":
+			cmd = exec.Command("open", cacheDir)
+		default: // linux and others
+			cmd = exec.Command("xdg-open", cacheDir)
+		}
+		if err := cmd.Start(); err != nil {
+			dialog.ShowError(fmt.Errorf("failed to open folder: %w", err), State.Window)
+		}
+	})
+
+	cacheForm := widget.NewForm(
+		widget.NewFormItem("Cache Size", cacheSizeLabel),
+	)
+
+	cacheButtons := container.NewHBox(clearCacheBtn, openCacheFolderBtn)
+
 	return container.NewVBox(
-		widget.NewLabel("Settings"),
+		widget.NewLabelWithStyle("Settings", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		widget.NewSeparator(),
 		form,
+		widget.NewSeparator(),
+		widget.NewLabelWithStyle("SteamGridDB Integration", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		widget.NewLabel("SteamGridDB allows you to select custom artwork for your games."),
+		apiKeyHelp,
+		apiKeyForm,
+		widget.NewSeparator(),
+		widget.NewLabelWithStyle("Image Cache", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		widget.NewLabel("Cached images are stored locally for faster loading."),
+		cacheForm,
+		cacheButtons,
+		widget.NewSeparator(),
 		saveBtn,
 	)
 }

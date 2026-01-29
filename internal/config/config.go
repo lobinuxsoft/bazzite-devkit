@@ -27,6 +27,13 @@ type GameSetup struct {
 	LaunchOptions string `json:"launch_options,omitempty"`
 	Tags          string `json:"tags,omitempty"`
 	RemotePath    string `json:"remote_path"`
+	// SteamGridDB artwork
+	GridDBGameID   int    `json:"griddb_game_id,omitempty"`
+	GridPortrait   string `json:"grid_portrait,omitempty"`   // 600x900 portrait grid
+	GridLandscape  string `json:"grid_landscape,omitempty"`  // 920x430 landscape grid
+	HeroImage      string `json:"hero_image,omitempty"`      // 1920x620 hero banner
+	LogoImage      string `json:"logo_image,omitempty"`      // Logo with transparency
+	IconImage      string `json:"icon_image,omitempty"`      // Square icon
 }
 
 // AppConfig represents the application configuration
@@ -34,6 +41,7 @@ type AppConfig struct {
 	Devices           []DeviceConfig `json:"devices"`
 	GameSetups        []GameSetup    `json:"game_setups"`
 	DefaultRemotePath string         `json:"default_remote_path"`
+	SteamGridDBAPIKey string         `json:"steamgriddb_api_key,omitempty"`
 }
 
 // GetConfigPath returns the path to the config file
@@ -230,4 +238,23 @@ func GetGameSetups() ([]GameSetup, error) {
 		return nil, err
 	}
 	return config.GameSetups, nil
+}
+
+// GetSteamGridDBAPIKey returns the SteamGridDB API key
+func GetSteamGridDBAPIKey() (string, error) {
+	config, err := Load()
+	if err != nil {
+		return "", err
+	}
+	return config.SteamGridDBAPIKey, nil
+}
+
+// SetSteamGridDBAPIKey saves the SteamGridDB API key
+func SetSteamGridDBAPIKey(apiKey string) error {
+	config, err := Load()
+	if err != nil {
+		return err
+	}
+	config.SteamGridDBAPIKey = apiKey
+	return Save(config)
 }

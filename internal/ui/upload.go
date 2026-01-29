@@ -26,6 +26,13 @@ type GameSetup struct {
 	LaunchOptions string
 	Tags          string
 	RemotePath    string
+	// SteamGridDB artwork
+	GridDBGameID  int
+	GridPortrait  string
+	GridLandscape string
+	HeroImage     string
+	LogoImage     string
+	IconImage     string
 }
 
 var (
@@ -57,6 +64,12 @@ func loadSavedGameSetups() {
 			LaunchOptions: s.LaunchOptions,
 			Tags:          s.Tags,
 			RemotePath:    s.RemotePath,
+			GridDBGameID:  s.GridDBGameID,
+			GridPortrait:  s.GridPortrait,
+			GridLandscape: s.GridLandscape,
+			HeroImage:     s.HeroImage,
+			LogoImage:     s.LogoImage,
+			IconImage:     s.IconImage,
 		}
 	}
 }
@@ -196,7 +209,7 @@ func showGameSetupForm(existingSetup *GameSetup) {
 	}
 
 	formWindow := fyne.CurrentApp().NewWindow(title)
-	formWindow.Resize(fyne.NewSize(550, 450))
+	formWindow.Resize(fyne.NewSize(550, 500))
 
 	nameEntry := widget.NewEntry()
 	localPathLabel := widget.NewLabel("No folder selected")
@@ -207,6 +220,40 @@ func showGameSetupForm(existingSetup *GameSetup) {
 
 	var localPath string
 
+	// Artwork selection state
+	var artworkSelection *ArtworkSelection
+
+	artworkStatusLabel := widget.NewLabel("No artwork selected")
+	artworkStatusLabel.TextStyle = fyne.TextStyle{Italic: true}
+
+	updateArtworkStatus := func() {
+		if artworkSelection == nil {
+			artworkStatusLabel.SetText("No artwork selected")
+			return
+		}
+		count := 0
+		if artworkSelection.GridPortrait != "" {
+			count++
+		}
+		if artworkSelection.GridLandscape != "" {
+			count++
+		}
+		if artworkSelection.HeroImage != "" {
+			count++
+		}
+		if artworkSelection.LogoImage != "" {
+			count++
+		}
+		if artworkSelection.IconImage != "" {
+			count++
+		}
+		if count > 0 {
+			artworkStatusLabel.SetText(fmt.Sprintf("%d artwork(s) selected", count))
+		} else {
+			artworkStatusLabel.SetText("No artwork selected")
+		}
+	}
+
 	if isEdit {
 		nameEntry.SetText(existingSetup.Name)
 		localPath = existingSetup.LocalPath
@@ -215,6 +262,21 @@ func showGameSetupForm(existingSetup *GameSetup) {
 		launchOptsEntry.SetText(existingSetup.LaunchOptions)
 		tagsEntry.SetText(existingSetup.Tags)
 		remotePathEntry.SetText(existingSetup.RemotePath)
+
+		// Load existing artwork
+		if existingSetup.GridDBGameID != 0 || existingSetup.GridPortrait != "" ||
+			existingSetup.GridLandscape != "" || existingSetup.HeroImage != "" ||
+			existingSetup.LogoImage != "" || existingSetup.IconImage != "" {
+			artworkSelection = &ArtworkSelection{
+				GridDBGameID:  existingSetup.GridDBGameID,
+				GridPortrait:  existingSetup.GridPortrait,
+				GridLandscape: existingSetup.GridLandscape,
+				HeroImage:     existingSetup.HeroImage,
+				LogoImage:     existingSetup.LogoImage,
+				IconImage:     existingSetup.IconImage,
+			}
+			updateArtworkStatus()
+		}
 	} else {
 		nameEntry.SetPlaceHolder("My Game")
 		exeEntry.SetPlaceHolder("game.x86_64 or game.sh")
@@ -237,6 +299,17 @@ func showGameSetupForm(existingSetup *GameSetup) {
 		}, State.Window)
 	})
 
+	selectArtworkBtn := widget.NewButtonWithIcon("Select Artwork", theme.MediaPhotoIcon(), func() {
+		gameName := nameEntry.Text
+		if gameName == "" {
+			gameName = filepath.Base(localPath)
+		}
+		ShowArtworkSelectionWindow(gameName, artworkSelection, func(selection *ArtworkSelection) {
+			artworkSelection = selection
+			updateArtworkStatus()
+		})
+	})
+
 	form := widget.NewForm(
 		widget.NewFormItem("Game Name", nameEntry),
 		widget.NewFormItem("Local Folder", container.NewBorder(nil, nil, nil, selectFolderBtn, localPathLabel)),
@@ -244,6 +317,7 @@ func showGameSetupForm(existingSetup *GameSetup) {
 		widget.NewFormItem("Launch Options", launchOptsEntry),
 		widget.NewFormItem("Tags", tagsEntry),
 		widget.NewFormItem("Remote Path", remotePathEntry),
+		widget.NewFormItem("Artwork", container.NewBorder(nil, nil, nil, selectArtworkBtn, artworkStatusLabel)),
 	)
 
 	saveBtn := widget.NewButtonWithIcon("Save Setup", theme.ConfirmIcon(), func() {
@@ -267,6 +341,14 @@ func showGameSetupForm(existingSetup *GameSetup) {
 			existingSetup.LaunchOptions = launchOptsEntry.Text
 			existingSetup.Tags = tagsEntry.Text
 			existingSetup.RemotePath = remotePathEntry.Text
+			if artworkSelection != nil {
+				existingSetup.GridDBGameID = artworkSelection.GridDBGameID
+				existingSetup.GridPortrait = artworkSelection.GridPortrait
+				existingSetup.GridLandscape = artworkSelection.GridLandscape
+				existingSetup.HeroImage = artworkSelection.HeroImage
+				existingSetup.LogoImage = artworkSelection.LogoImage
+				existingSetup.IconImage = artworkSelection.IconImage
+			}
 			updateGameSetup(existingSetup)
 		} else {
 			setup := &GameSetup{
@@ -276,6 +358,14 @@ func showGameSetupForm(existingSetup *GameSetup) {
 				LaunchOptions: launchOptsEntry.Text,
 				Tags:          tagsEntry.Text,
 				RemotePath:    remotePathEntry.Text,
+			}
+			if artworkSelection != nil {
+				setup.GridDBGameID = artworkSelection.GridDBGameID
+				setup.GridPortrait = artworkSelection.GridPortrait
+				setup.GridLandscape = artworkSelection.GridLandscape
+				setup.HeroImage = artworkSelection.HeroImage
+				setup.LogoImage = artworkSelection.LogoImage
+				setup.IconImage = artworkSelection.IconImage
 			}
 			addGameSetup(setup)
 		}
@@ -312,6 +402,12 @@ func addGameSetup(setup *GameSetup) {
 		LaunchOptions: setup.LaunchOptions,
 		Tags:          setup.Tags,
 		RemotePath:    setup.RemotePath,
+		GridDBGameID:  setup.GridDBGameID,
+		GridPortrait:  setup.GridPortrait,
+		GridLandscape: setup.GridLandscape,
+		HeroImage:     setup.HeroImage,
+		LogoImage:     setup.LogoImage,
+		IconImage:     setup.IconImage,
 	})
 }
 
@@ -325,6 +421,12 @@ func updateGameSetup(setup *GameSetup) {
 		LaunchOptions: setup.LaunchOptions,
 		Tags:          setup.Tags,
 		RemotePath:    setup.RemotePath,
+		GridDBGameID:  setup.GridDBGameID,
+		GridPortrait:  setup.GridPortrait,
+		GridLandscape: setup.GridLandscape,
+		HeroImage:     setup.HeroImage,
+		LogoImage:     setup.LogoImage,
+		IconImage:     setup.IconImage,
 	})
 }
 
@@ -425,7 +527,21 @@ func uploadGame(setup *GameSetup) {
 	progressBar.SetValue(0.9)
 	statusLabel.SetText("Creating Steam shortcut...")
 
-	if err := createShortcut(dev, setup.Name, exePath, remoteGamePath, setup.LaunchOptions, setup.Tags); err != nil {
+	// Prepare artwork config if available
+	var artworkCfg *shortcuts.ArtworkConfig
+	if setup.GridPortrait != "" || setup.GridLandscape != "" || setup.HeroImage != "" ||
+		setup.LogoImage != "" || setup.IconImage != "" {
+		artworkCfg = &shortcuts.ArtworkConfig{
+			GridPortrait:  setup.GridPortrait,
+			GridLandscape: setup.GridLandscape,
+			HeroImage:     setup.HeroImage,
+			LogoImage:     setup.LogoImage,
+			IconImage:     setup.IconImage,
+		}
+		statusLabel.SetText("Creating Steam shortcut with artwork...")
+	}
+
+	if err := createShortcut(dev, setup.Name, exePath, remoteGamePath, setup.LaunchOptions, setup.Tags, artworkCfg); err != nil {
 		showUploadError(err)
 		return
 	}
@@ -455,7 +571,7 @@ func getFilesToUpload(root string) ([]string, error) {
 }
 
 // createShortcut creates a Steam shortcut on the remote device
-func createShortcut(dev *Device, name, exe, startDir, launchOpts, tags string) error {
+func createShortcut(dev *Device, name, exe, startDir, launchOpts, tags string, artwork *shortcuts.ArtworkConfig) error {
 	cfg := &shortcuts.RemoteConfig{
 		Host:     dev.Host,
 		Port:     dev.Port,
@@ -466,7 +582,7 @@ func createShortcut(dev *Device, name, exe, startDir, launchOpts, tags string) e
 
 	tagsList := shortcuts.ParseTags(tags)
 
-	if err := shortcuts.AddShortcut(cfg, name, exe, startDir, launchOpts, tagsList); err != nil {
+	if err := shortcuts.AddShortcutWithArtwork(cfg, name, exe, startDir, launchOpts, tagsList, artwork); err != nil {
 		return err
 	}
 

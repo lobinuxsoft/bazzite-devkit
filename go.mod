@@ -1,6 +1,6 @@
 module github.com/lobinuxsoft/bazzite-devkit
 
-go 1.21
+go 1.23
 
 require (
 	fyne.io/fyne/v2 v2.4.3
@@ -14,11 +14,13 @@ replace github.com/shadowblip/steam-shortcut-manager => ./steam-shortcut-manager
 require (
 	fyne.io/systray v1.10.1-0.20231115130155-104f5ef7839e // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/ebitengine/purego v0.8.3 // indirect
 	github.com/fredbi/uri v1.0.0 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/fyne-io/gl-js v0.0.0-20220119005834-d2da28d9ccfe // indirect
 	github.com/fyne-io/glfw-js v0.0.0-20220120001248-ee7290d23504 // indirect
 	github.com/fyne-io/image v0.0.0-20220602074514-4956b0afb3d2 // indirect
+	github.com/gen2brain/webp v0.5.5 // indirect
 	github.com/go-gl/gl v0.0.0-20211210172815-726fda9656d6 // indirect
 	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20221017161538-93cebf72946b // indirect
 	github.com/go-text/render v0.0.0-20230619120952-35bccb6164b8 // indirect
@@ -31,6 +33,7 @@ require (
 	github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c // indirect
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef // indirect
 	github.com/stretchr/testify v1.8.4 // indirect
+	github.com/tetratelabs/wazero v1.9.0 // indirect
 	github.com/tevino/abool v1.2.0 // indirect
 	github.com/wakeful-cloud/vdf v0.0.0-20210218214150-0be6ec18b390 // indirect
 	github.com/yuin/goldmark v1.5.5 // indirect

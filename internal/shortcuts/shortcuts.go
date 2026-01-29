@@ -4,12 +4,24 @@ package shortcuts
 
 import (
 	"fmt"
+	"io"
+	"net/http"
+	"path/filepath"
 	"strings"
 
 	"github.com/shadowblip/steam-shortcut-manager/pkg/remote"
 	"github.com/shadowblip/steam-shortcut-manager/pkg/shortcut"
 	"github.com/shadowblip/steam-shortcut-manager/pkg/steam"
 )
+
+// ArtworkConfig holds the artwork URLs to download
+type ArtworkConfig struct {
+	GridPortrait  string // 600x900 portrait grid (e.g. {appid}p.png)
+	GridLandscape string // 920x430 landscape grid (e.g. {appid}.png)
+	HeroImage     string // 1920x620 hero banner (e.g. {appid}_hero.png)
+	LogoImage     string // Logo with transparency (e.g. {appid}_logo.png)
+	IconImage     string // Square icon (e.g. {appid}_icon.png)
+}
 
 // RemoteConfig holds the SSH connection parameters
 type RemoteConfig struct {
@@ -22,6 +34,11 @@ type RemoteConfig struct {
 
 // AddShortcut adds a Steam shortcut on a remote device
 func AddShortcut(cfg *RemoteConfig, name, exe, startDir, launchOpts string, tags []string) error {
+	return AddShortcutWithArtwork(cfg, name, exe, startDir, launchOpts, tags, nil)
+}
+
+// AddShortcutWithArtwork adds a Steam shortcut with custom artwork on a remote device
+func AddShortcutWithArtwork(cfg *RemoteConfig, name, exe, startDir, launchOpts string, tags []string, artwork *ArtworkConfig) error {
 	// Create and connect remote client
 	client := remote.NewClient(&remote.Config{
 		Host:     cfg.Host,
@@ -50,6 +67,9 @@ func AddShortcut(cfg *RemoteConfig, name, exe, startDir, launchOpts string, tags
 		return fmt.Errorf("no Steam users found on remote device")
 	}
 
+	// Calculate appID for artwork naming
+	appID := shortcut.CalculateAppID(exe, name)
+
 	// Add shortcut for all users
 	for _, user := range users {
 		shortcutsPath, err := steam.GetRemoteShortcutsPath(user)
@@ -74,7 +94,7 @@ func AddShortcut(cfg *RemoteConfig, name, exe, startDir, launchOpts string, tags
 			s.AllowOverlay = 1
 			s.StartDir = startDir
 			s.LaunchOptions = launchOpts
-			s.Appid = int64(shortcut.CalculateAppID(exe, name))
+			s.Appid = int64(appID)
 
 			// Add tags
 			s.Tags = map[string]interface{}{}
@@ -92,6 +112,82 @@ func AddShortcut(cfg *RemoteConfig, name, exe, startDir, launchOpts string, tags
 		if err := shortcut.Save(shortcuts, shortcutsPath); err != nil {
 			return fmt.Errorf("failed to save shortcuts for user %s: %w", user, err)
 		}
+
+		// Download and upload artwork if provided
+		if artwork != nil {
+			// Construct the grid path manually (userdata/USER_ID/config/grid)
+			shortcutsDir := filepath.Dir(shortcutsPath) // userdata/USER_ID/config
+			gridPath := filepath.Join(shortcutsDir, "grid")
+			// Convert to forward slashes for Linux
+			gridPath = strings.ReplaceAll(gridPath, "\\", "/")
+
+			// Ensure grid directory exists
+			client.RunCommand(fmt.Sprintf("mkdir -p %q", gridPath))
+
+			// Download and upload each artwork type
+			if artwork.GridPortrait != "" {
+				downloadAndUploadArtwork(client, artwork.GridPortrait, gridPath, fmt.Sprintf("%dp", appID))
+			}
+			if artwork.GridLandscape != "" {
+				downloadAndUploadArtwork(client, artwork.GridLandscape, gridPath, fmt.Sprintf("%d", appID))
+			}
+			if artwork.HeroImage != "" {
+				downloadAndUploadArtwork(client, artwork.HeroImage, gridPath, fmt.Sprintf("%d_hero", appID))
+			}
+			if artwork.LogoImage != "" {
+				downloadAndUploadArtwork(client, artwork.LogoImage, gridPath, fmt.Sprintf("%d_logo", appID))
+			}
+			if artwork.IconImage != "" {
+				downloadAndUploadArtwork(client, artwork.IconImage, gridPath, fmt.Sprintf("%d_icon", appID))
+			}
+		}
+	}
+
+	return nil
+}
+
+// downloadAndUploadArtwork downloads an image from URL and uploads it to remote path
+func downloadAndUploadArtwork(client *remote.Client, url, remotePath, baseName string) error {
+	// Download the image
+	resp, err := http.Get(url)
+	if err != nil {
+		return fmt.Errorf("failed to download artwork: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to download artwork: HTTP %d", resp.StatusCode)
+	}
+
+	// Read image data
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read artwork data: %w", err)
+	}
+
+	// Determine file extension from URL or content type
+	ext := filepath.Ext(url)
+	if ext == "" {
+		contentType := resp.Header.Get("Content-Type")
+		switch {
+		case strings.Contains(contentType, "png"):
+			ext = ".png"
+		case strings.Contains(contentType, "jpeg"), strings.Contains(contentType, "jpg"):
+			ext = ".jpg"
+		case strings.Contains(contentType, "webp"):
+			ext = ".webp"
+		default:
+			ext = ".png"
+		}
+	}
+
+	// Upload to remote using WriteFile
+	remoteDest := filepath.Join(remotePath, baseName+ext)
+	// Convert to forward slashes for Linux
+	remoteDest = strings.ReplaceAll(remoteDest, "\\", "/")
+
+	if err := client.WriteFile(remoteDest, data, 0644); err != nil {
+		return fmt.Errorf("failed to upload artwork: %w", err)
 	}
 
 	return nil
