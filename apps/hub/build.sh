@@ -3,7 +3,7 @@
 set -e
 
 echo "============================================"
-echo "  Bazzite Devkit - Build Script"
+echo "  CapyDeploy Hub - Build Script"
 echo "============================================"
 echo
 
@@ -139,7 +139,7 @@ fi
 echo -e "${YELLOW}[3/5]${NC} Building embedded steam-shortcut-manager (Linux)..."
 echo
 
-pushd steam-shortcut-manager > /dev/null
+pushd ../../steam-shortcut-manager > /dev/null
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o ../internal/embedded/steam-shortcut-manager .
 if [ $? -ne 0 ]; then
     echo -e "${RED}[ERROR]${NC} Failed to build steam-shortcut-manager."
@@ -183,7 +183,7 @@ else
     echo -e "${YELLOW}[5/5]${NC} Build output:"
     echo
 
-    BINARY="build/bin/bazzite-devkit"
+    BINARY="build/bin/capydeploy-hub"
     if [ -f "$BINARY" ]; then
         SIZE=$(stat -f%z "$BINARY" 2>/dev/null || stat -c%s "$BINARY" 2>/dev/null || echo "0")
         SIZE_KB=$((SIZE / 1024))
@@ -196,5 +196,5 @@ else
     fi
 
     echo
-    echo "Done! Run with: ./build/bin/bazzite-devkit"
+    echo "Done! Run with: ./build/bin/capydeploy-hub"
 fi

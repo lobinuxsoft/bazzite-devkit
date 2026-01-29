@@ -185,7 +185,7 @@ func GetImageCacheDir() (string, error) {
 		}
 		configDir = home
 	}
-	cacheDir := filepath.Join(configDir, "bazzite-devkit", "cache", "images")
+	cacheDir := filepath.Join(configDir, "capydeploy", "cache", "images")
 	if err := os.MkdirAll(cacheDir, 0755); err != nil {
 		return "", err
 	}

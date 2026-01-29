@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 echo ============================================
-echo   Bazzite Devkit - Build Script
+echo   CapyDeploy Hub - Build Script
 echo ============================================
 echo.
 
@@ -105,7 +105,7 @@ echo [3/5] Building embedded steam-shortcut-manager (Linux)...
 echo.
 
 :: Cross-compile steam-shortcut-manager for Linux
-pushd steam-shortcut-manager
+pushd ..\..\steam-shortcut-manager
 set GOOS=linux
 set GOARCH=amd64
 set CGO_ENABLED=0
@@ -158,12 +158,12 @@ if "%MODE%"=="dev" (
     echo [5/5] Build output:
     echo.
 
-    if exist "build\bin\bazzite-devkit.exe" (
-        for %%A in ("build\bin\bazzite-devkit.exe") do (
+    if exist "build\bin\capydeploy-hub.exe" (
+        for %%A in ("build\bin\capydeploy-hub.exe") do (
             set SIZE=%%~zA
             set /a SIZE_KB=!SIZE!/1024
             set /a SIZE_MB=!SIZE!/1048576
-            echo   File: build\bin\bazzite-devkit.exe
+            echo   File: build\bin\capydeploy-hub.exe
             echo   Size: !SIZE_MB! MB ^(!SIZE_KB! KB^)
         )
     ) else (
@@ -172,7 +172,7 @@ if "%MODE%"=="dev" (
     )
 
     echo.
-    echo Done! Run with: .\build\bin\bazzite-devkit.exe
+    echo Done! Run with: .\build\bin\capydeploy-hub.exe
 )
 
 exit /b 0

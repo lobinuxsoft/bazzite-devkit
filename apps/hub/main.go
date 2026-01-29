@@ -18,7 +18,7 @@ func main() {
 	app := NewApp()
 
 	err := wails.Run(&options.App{
-		Title:     "Bazzite Devkit",
+		Title:     "CapyDeploy Hub",
 		Width:     1200,
 		Height:    800,
 		MinWidth:  800,

@@ -4,7 +4,8 @@ build/
 *.dll
 *.so
 *.dylib
-bazzite-devkit
+capydeploy-hub
+capydeploy-agent
 
 # Embedded binaries (generated during build)
 internal/embedded/steam-shortcut-manager
@@ -13,9 +14,9 @@ internal/embedded/steam-shortcut-manager
 go.sum
 
 # Frontend
-frontend/node_modules/
-frontend/dist/
-frontend/.svelte-kit/
+apps/hub/frontend/node_modules/
+apps/hub/frontend/dist/
+apps/hub/frontend/.svelte-kit/
 
 # IDE
 .idea/
