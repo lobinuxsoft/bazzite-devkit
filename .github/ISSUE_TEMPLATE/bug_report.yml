@@ -1,0 +1,88 @@
+name: Bug Report
+description: Report a bug or unexpected behavior
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the sections below.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of Bazzite Devkit is affected?
+      options:
+        - backend (Go code)
+        - frontend (Svelte UI)
+        - ssh/sftp (Connection handling)
+        - shortcuts (Steam shortcut management)
+        - artwork (SteamGridDB integration)
+        - build (Build scripts, compilation)
+        - documentation
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear description of what the bug is
+      placeholder: What happened? What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this issue?
+      placeholder: |
+        1. Connect to device
+        2. Upload a game
+        3. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Please provide your environment details
+      value: |
+        - OS: [e.g., Windows 11, Ubuntu 22.04]
+        - Bazzite Devkit version: [e.g., 1.0.0]
+        - Remote device: [e.g., Steam Deck, Bazzite on OneXFly]
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs
+      description: Paste any error messages or logs here
+      render: shell
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched existing issues to ensure this is not a duplicate
+          required: true
+        - label: I have tested with the latest version
+          required: false
+        - label: I am willing to submit a PR to fix this issue
+          required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        **Want to contribute a fix?** Great! Please:
+        1. Wait for the issue to be triaged and assigned to you
+        2. Create a branch: `fix/issue-XX-short-description`
+        3. Submit a PR targeting `master`
+
+        See [CONTRIBUTING.md](https://github.com/lobinuxsoft/bazzite-devkit/blob/master/CONTRIBUTING.md) for details.

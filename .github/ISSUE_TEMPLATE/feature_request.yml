@@ -1,0 +1,90 @@
+name: Feature Request
+description: Suggest a new feature or enhancement
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature! Please describe your idea below.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of Bazzite Devkit would this affect?
+      options:
+        - backend (Go code)
+        - frontend (Svelte UI)
+        - ssh/sftp (Connection handling)
+        - shortcuts (Steam shortcut management)
+        - artwork (SteamGridDB integration)
+        - build (Build scripts, compilation)
+        - documentation
+        - New component (describe in proposal)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority (your opinion)
+      description: How important is this feature to you?
+      options:
+        - Nice to have
+        - Would improve my workflow
+        - Important for my project
+        - Blocking my project
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem does this feature solve?
+      placeholder: I'm always frustrated when...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: How would you like this to work?
+      placeholder: It would be great if...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any other solutions or workarounds you've considered?
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Screenshots, mockups, code examples, or links to similar features in other tools
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched existing issues to ensure this is not a duplicate
+          required: true
+        - label: I am willing to submit a PR to implement this feature
+          required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        **Want to implement this feature?** Great! Please:
+        1. Wait for the issue to be discussed and approved
+        2. Create a branch: `feature/issue-XX-short-description`
+        3. Submit a PR targeting `master`
+
+        See [CONTRIBUTING.md](https://github.com/lobinuxsoft/bazzite-devkit/blob/master/CONTRIBUTING.md) for details.
