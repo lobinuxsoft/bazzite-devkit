@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/lobinuxsoft/bazzite-devkit/internal/device"
+	"github.com/lobinuxsoft/capydeploy/internal/device"
 	"github.com/shadowblip/steam-shortcut-manager/pkg/remote"
 	"github.com/shadowblip/steam-shortcut-manager/pkg/shortcut"
 	"github.com/shadowblip/steam-shortcut-manager/pkg/steam"

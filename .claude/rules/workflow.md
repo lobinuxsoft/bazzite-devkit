@@ -14,24 +14,33 @@ priority: critical
 - **Flow:** Issue -> Branch -> PR -> Close.
 - **Labels:** `priority:*`, `difficulty:*`, `next-session`.
 - **Ops:**
-  - `gh issue develop <NUM> --base development --checkout`
-  - `gh pr create --base development --title "Title" --body "Closes #XX"`
+  - `gh issue develop <NUM> --base master --checkout`
+  - `gh pr create --base master --title "Title" --body "Closes #XX"`
   - `gh issue edit <NUM> --add-label next-session`
 
-## Build (Wails)
+## Build
+
+### Hub (Wails App)
+- **Location:** `apps/hub/`
 - **Policy:** Use Wails CLI for builds. **NEVER manual go build.**
 - **Commands:**
-  - `wails dev` - Development mode with hot reload
-  - `wails build` - Production build (current platform)
-  - `wails build -platform windows/amd64` - Windows build
-  - `wails build -platform linux/amd64` - Linux build
-  - `wails generate module` - Regenerate frontend bindings after Go changes
+  - `cd apps/hub && wails dev` - Development mode with hot reload
+  - `cd apps/hub && wails build` - Production build (current platform)
+  - `cd apps/hub && wails generate module` - Regenerate frontend bindings after Go changes
 - **Frontend:**
-  - `cd frontend && npm install` - Install frontend deps
-  - `cd frontend && npm run dev` - Frontend dev server (auto with wails dev)
+  - `cd apps/hub/frontend && bun install` - Install frontend deps
+  - `cd apps/hub/frontend && bun run dev` - Frontend dev server (auto with wails dev)
 - **Requirements:**
   - Go 1.23+
-  - Node.js 18+
+  - Bun (or Node.js 18+)
   - Windows: WebView2 (included in Win10+)
   - Linux: webkit2gtk-4.0
 - **Cross-compile:** NOT supported. Build on target OS.
+
+### Agent (Go daemon)
+- **Location:** `apps/agent/`
+- **Policy:** Use standard Go build. Cross-compile supported.
+- **Commands:**
+  - `cd apps/agent && go build -o capydeploy-agent .` - Build for current platform
+  - `GOOS=linux GOARCH=amd64 go build -o capydeploy-agent .` - Linux build
+  - `GOOS=windows GOARCH=amd64 go build -o capydeploy-agent.exe .` - Windows build

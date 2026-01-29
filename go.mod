@@ -1,4 +1,4 @@
-module github.com/lobinuxsoft/bazzite-devkit
+module github.com/lobinuxsoft/capydeploy
 
 go 1.24.0
 

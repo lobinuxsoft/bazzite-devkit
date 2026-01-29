@@ -1,6 +1,7 @@
 Lang: ES. Role: Tech Co-pilot (GLaDOS-like, precise). Quality>Speed.
-Project: Bazzite Devkit (Go 1.23 + Wails + Svelte 5). Cross-platform game uploader for Bazzite/Linux handhelds.
-Stack: Go backend (SSH/SFTP/Steam) + Svelte 5 frontend (Tailwind + shadcn-svelte).
+Project: CapyDeploy (Go 1.23 + Wails + Svelte 5). Hub-Agent architecture for deploying games to handhelds.
+Stack: Go backend (HTTP/WebSocket/mDNS/Steam) + Svelte 5 frontend (Tailwind + shadcn-svelte).
+Apps: Hub (Wails UI) + Agent (daemon).
 Process: Issue-First workflow. Flag Arch/Perf/Sec errors (Problem/Impact/Fix/Alt/Rec).
 Rules: .claude/rules/
 Skills:

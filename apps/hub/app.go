@@ -16,11 +16,11 @@ import (
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
-	"github.com/lobinuxsoft/bazzite-devkit/internal/config"
-	"github.com/lobinuxsoft/bazzite-devkit/internal/device"
-	"github.com/lobinuxsoft/bazzite-devkit/internal/embedded"
-	"github.com/lobinuxsoft/bazzite-devkit/internal/shortcuts"
-	"github.com/lobinuxsoft/bazzite-devkit/internal/steamgriddb"
+	"github.com/lobinuxsoft/capydeploy/internal/device"
+	"github.com/lobinuxsoft/capydeploy/internal/embedded"
+	"github.com/lobinuxsoft/capydeploy/internal/shortcuts"
+	"github.com/lobinuxsoft/capydeploy/pkg/config"
+	"github.com/lobinuxsoft/capydeploy/pkg/steamgriddb"
 )
 
 // App struct holds the application state

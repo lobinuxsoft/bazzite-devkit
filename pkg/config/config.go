@@ -56,7 +56,7 @@ func GetConfigPath() (string, error) {
 		configDir = home
 	}
 
-	appConfigDir := filepath.Join(configDir, "bazzite-devkit")
+	appConfigDir := filepath.Join(configDir, "capydeploy")
 	if err := os.MkdirAll(appConfigDir, 0755); err != nil {
 		return "", err
 	}
