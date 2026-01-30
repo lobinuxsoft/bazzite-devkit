@@ -71,3 +71,4 @@ Closes #XX
 - Despues de crear PR: STOP y esperar al usuario
 - NUNCA hacer merge a menos que el usuario lo pida explicitamente
 - Probar en ambas plataformas antes de merge (cuando sea posible)
+- **NO incluir firmas de AI** en el body del PR (ej: "Generated with Claude")
