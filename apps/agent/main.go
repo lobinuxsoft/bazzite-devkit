@@ -21,13 +21,15 @@ var Version = "dev"
 
 func main() {
 	var (
-		port    int
-		name    string
-		verbose bool
+		port       int
+		name       string
+		uploadPath string
+		verbose    bool
 	)
 
 	flag.IntVar(&port, "port", discovery.DefaultPort, "HTTP server port")
 	flag.StringVar(&name, "name", "", "Agent name (default: hostname)")
+	flag.StringVar(&uploadPath, "upload-path", "", "Base path for uploaded games (default: ~/Games)")
 	flag.BoolVar(&verbose, "verbose", false, "Enable verbose logging")
 	flag.Parse()
 
@@ -49,11 +51,12 @@ func main() {
 
 	// Create and configure agent server
 	cfg := server.Config{
-		Port:     port,
-		Name:     name,
-		Version:  Version,
-		Platform: discovery.GetPlatform(),
-		Verbose:  verbose,
+		Port:       port,
+		Name:       name,
+		Version:    Version,
+		Platform:   discovery.GetPlatform(),
+		Verbose:    verbose,
+		UploadPath: uploadPath,
 	}
 
 	agent, err := server.New(cfg)

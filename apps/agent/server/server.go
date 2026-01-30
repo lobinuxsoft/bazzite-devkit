@@ -6,21 +6,25 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/lobinuxsoft/capydeploy/pkg/discovery"
 	"github.com/lobinuxsoft/capydeploy/pkg/protocol"
+	"github.com/lobinuxsoft/capydeploy/pkg/transfer"
 )
 
 // Config holds the agent server configuration.
 type Config struct {
-	Port     int
-	Name     string
-	Version  string
-	Platform string
-	Verbose  bool
+	Port        int
+	Name        string
+	Version     string
+	Platform    string
+	Verbose     bool
+	UploadPath  string // Base path for uploaded files
 }
 
 // Server is the main agent server that handles HTTP requests and mDNS discovery.
@@ -31,21 +35,41 @@ type Server struct {
 	mdnsSrv   *discovery.Server
 	mu        sync.RWMutex
 	startTime time.Time
+
+	// Upload management
+	uploadMu sync.RWMutex
+	uploads  map[string]*transfer.UploadSession
 }
 
 // New creates a new agent server.
 func New(cfg Config) (*Server, error) {
 	id := uuid.New().String()[:8]
 
+	// Set default upload path if not specified
+	if cfg.UploadPath == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get home directory: %w", err)
+		}
+		cfg.UploadPath = filepath.Join(home, "Games")
+	}
+
+	// Ensure upload directory exists
+	if err := os.MkdirAll(cfg.UploadPath, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create upload directory: %w", err)
+	}
+
 	return &Server{
-		cfg: cfg,
-		id:  id,
+		cfg:     cfg,
+		id:      id,
+		uploads: make(map[string]*transfer.UploadSession),
 	}, nil
 }
 
 // Run starts the HTTP server and mDNS discovery.
 func (s *Server) Run(ctx context.Context) error {
 	s.startTime = time.Now()
+	log.Printf("Upload path: %s", s.cfg.UploadPath)
 
 	// Setup HTTP server
 	mux := http.NewServeMux()
@@ -54,9 +78,9 @@ func (s *Server) Run(ctx context.Context) error {
 	s.httpSrv = &http.Server{
 		Addr:         fmt.Sprintf(":%d", s.cfg.Port),
 		Handler:      mux,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		ReadTimeout:  5 * time.Minute,  // Allow time for chunk uploads
+		WriteTimeout: 5 * time.Minute,
+		IdleTimeout:  2 * time.Minute,
 	}
 
 	// Setup mDNS server
@@ -133,4 +157,40 @@ func (s *Server) GetInfo() protocol.AgentInfo {
 		Version:      s.cfg.Version,
 		SteamRunning: false, // TODO: Implement Steam status check
 	}
+}
+
+// Upload management methods
+
+// CreateUpload creates a new upload session.
+func (s *Server) CreateUpload(config protocol.UploadConfig, totalBytes int64, files []transfer.FileEntry) *transfer.UploadSession {
+	s.uploadMu.Lock()
+	defer s.uploadMu.Unlock()
+
+	id := uuid.New().String()
+	session := transfer.NewUploadSession(id, config, totalBytes, files)
+	s.uploads[id] = session
+
+	return session
+}
+
+// GetUpload returns an upload session by ID.
+func (s *Server) GetUpload(id string) (*transfer.UploadSession, bool) {
+	s.uploadMu.RLock()
+	defer s.uploadMu.RUnlock()
+
+	session, ok := s.uploads[id]
+	return session, ok
+}
+
+// DeleteUpload removes an upload session.
+func (s *Server) DeleteUpload(id string) {
+	s.uploadMu.Lock()
+	defer s.uploadMu.Unlock()
+
+	delete(s.uploads, id)
+}
+
+// GetUploadPath returns the full path for an upload.
+func (s *Server) GetUploadPath(gameName string) string {
+	return filepath.Join(s.cfg.UploadPath, gameName)
 }

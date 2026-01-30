@@ -24,6 +24,13 @@ func (s *Server) registerHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("GET /shortcuts/{userID}", s.handleListShortcuts)
 	mux.HandleFunc("POST /shortcuts/{userID}", s.handleCreateShortcut)
 	mux.HandleFunc("DELETE /shortcuts/{userID}/{appID}", s.handleDeleteShortcut)
+
+	// Uploads
+	mux.HandleFunc("POST /uploads", s.handleInitUpload)
+	mux.HandleFunc("POST /uploads/{id}/chunks", s.handleUploadChunk)
+	mux.HandleFunc("POST /uploads/{id}/complete", s.handleCompleteUpload)
+	mux.HandleFunc("DELETE /uploads/{id}", s.handleCancelUpload)
+	mux.HandleFunc("GET /uploads/{id}", s.handleGetUploadStatus)
 }
 
 // handleHealth returns a simple health check response.
