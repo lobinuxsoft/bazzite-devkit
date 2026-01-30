@@ -31,6 +31,7 @@ priority: critical
 - **Commands:**
   - `cd apps/hub && wails dev` - Development mode with hot reload
   - `cd apps/hub && wails build` - Production build (current platform)
+  - `cd apps/hub && wails build -tags webkit2_41` - Build for systems with webkit2gtk-4.1 (Fedora 41+)
   - `cd apps/hub && wails generate module` - Regenerate frontend bindings after Go changes
 - **Frontend:**
   - `cd apps/hub/frontend && bun install` - Install frontend deps
@@ -39,7 +40,7 @@ priority: critical
   - Go 1.23+
   - Bun (or Node.js 18+)
   - Windows: WebView2 (included in Win10+)
-  - Linux: webkit2gtk-4.0
+  - Linux: webkit2gtk-4.0 or webkit2gtk-4.1 (use `-tags webkit2_41` for 4.1)
 - **Cross-compile:** NOT supported. Build on target OS.
 
 ### Agent (Go daemon)
