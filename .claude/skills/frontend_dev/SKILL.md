@@ -2,9 +2,9 @@
 name: frontend_dev
 description: Svelte 5 + Tailwind + shadcn-svelte frontend development.
 ---
-# Frontend Stack
+# Frontend Stack (CapyDeploy Hub)
 
-- **Framework**: Svelte 5 (runes mode)
+- **Framework**: Svelte 5 (runes mode) + SvelteKit
 - **Styling**: Tailwind CSS v4
 - **Components**: shadcn-svelte
 - **Build**: Vite
@@ -32,42 +32,42 @@ description: Svelte 5 + Tailwind + shadcn-svelte frontend development.
 
 ## Component Structure
 ```
-frontend/src/
+apps/hub/frontend/src/
 ├── lib/
 │   ├── components/
-│   │   ├── ui/           # shadcn-svelte components
+│   │   ├── ui/              # shadcn-svelte components
 │   │   ├── DeviceList.svelte
-│   │   ├── ArtworkGrid.svelte
-│   │   └── UploadProgress.svelte
-│   ├── stores/           # Svelte stores for global state
-│   ├── api.ts            # Wails binding wrappers
-│   └── types.ts          # TypeScript interfaces
-├── App.svelte            # Main app component
-└── main.ts               # Entry point
+│   │   ├── ArtworkSelector.svelte
+│   │   ├── GameSetupList.svelte
+│   │   └── Settings.svelte
+│   ├── stores/              # Svelte stores for global state
+│   │   ├── devices.ts
+│   │   ├── games.ts
+│   │   └── connection.ts
+│   ├── wailsjs.ts           # Wails binding wrappers
+│   └── types.ts             # TypeScript interfaces
+├── routes/
+│   ├── +layout.svelte       # App layout
+│   └── +page.svelte         # Main page
+└── app.css                  # Global styles
 ```
 
 ## shadcn-svelte Usage
 ```bash
-npx shadcn-svelte@latest add button
-npx shadcn-svelte@latest add card
-npx shadcn-svelte@latest add tabs
-npx shadcn-svelte@latest add dialog
+cd apps/hub/frontend
+bunx shadcn-svelte@latest add button card tabs dialog
 ```
 
 ```svelte
 <script>
-  import { Button } from '$lib/components/ui/button';
-  import * as Card from '$lib/components/ui/card';
+  import { Button } from '$lib/components/ui/Button.svelte';
+  import Card from '$lib/components/ui/Card.svelte';
 </script>
 
-<Card.Root>
-  <Card.Header>
-    <Card.Title>Device</Card.Title>
-  </Card.Header>
-  <Card.Content>
-    <Button on:click={connect}>Connect</Button>
-  </Card.Content>
-</Card.Root>
+<Card>
+  <h3>Agent</h3>
+  <Button onclick={connect}>Connect</Button>
+</Card>
 ```
 
 ## Tailwind Best Practices
@@ -78,21 +78,21 @@ npx shadcn-svelte@latest add dialog
 
 ## Wails Integration
 ```typescript
-// lib/api.ts - Typed wrappers for Wails bindings
-import { ScanDevices, ConnectDevice } from '../../wailsjs/go/main/App';
-import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
-import type { Device } from './types';
+// lib/wailsjs.ts - Typed wrappers for Wails bindings
+import { DiscoverAgents, UploadGame } from './wailsjs/go/main/App';
+import { EventsOn, EventsOff } from './wailsjs/runtime/runtime';
+import type { AgentInfo, UploadProgress } from './types';
 
-export async function scanDevices(): Promise<Device[]> {
-  return await ScanDevices();
+export async function discoverAgents(): Promise<AgentInfo[]> {
+  return await DiscoverAgents();
 }
 
-export function onUploadProgress(callback: (progress: number) => void) {
-  return EventsOn('upload:progress', callback);
+export function onTransferProgress(callback: (progress: UploadProgress) => void) {
+  return EventsOn('transfer:progress', callback);
 }
 ```
 
-## Image Handling (solves the original issue)
+## Image Handling
 ```svelte
 <!-- Native browser support - animated WebP/GIF work! -->
 <img
@@ -106,7 +106,7 @@ export function onUploadProgress(callback: (progress: number) => void) {
 <img
   src={artworkUrl}
   alt={gameName}
-  onerror={(e) => e.target.src = '/placeholder.png'}
+  onerror={(e) => e.currentTarget.src = '/placeholder.png'}
 />
 ```
 
@@ -114,8 +114,8 @@ export function onUploadProgress(callback: (progress: number) => void) {
 ```typescript
 // stores/devices.ts
 import { writable } from 'svelte/store';
-import type { Device } from '$lib/types';
+import type { AgentInfo } from '$lib/types';
 
-export const devices = writable<Device[]>([]);
-export const connectedDevice = writable<Device | null>(null);
+export const agents = writable<AgentInfo[]>([]);
+export const connectedAgent = writable<AgentInfo | null>(null);
 ```
