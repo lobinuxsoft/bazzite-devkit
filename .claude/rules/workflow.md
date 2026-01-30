@@ -5,7 +5,8 @@ priority: critical
 # WORKFLOW — DO NOT IGNORE
 
 ## Git & SemVer
-- **Commits:** Spanish, Conventional (`feat:`, `fix:`, `docs:`). **NO signatures.**
+- **Commits:** Spanish, Conventional (`feat:`, `fix:`, `docs:`). **NO AI signatures.**
+- **PRs/Issues:** **NO AI signatures** (no "Generated with Claude", "Co-Authored-By", etc.)
 - **Branches:** `main` (rel) <- `development` (int) <- `feat/issue-ID`.
 - **SemVer:** MAJOR (Breaks, Tag `vX.0.0`), MINOR (Feat), PATCH (Fix).
 - **Process:** PR `dev` -> `main`, Tag, Push. **NO Force Push.**
